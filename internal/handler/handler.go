@@ -37,38 +37,35 @@ func (h *Handler) ShortenURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate that the URL is a valid absolute URL
 	parsedURL, err := url.Parse(originalURL)
 	if err != nil {
 		http.Error(w, "Invalid URL format", http.StatusBadRequest)
 		return
 	}
 
-	// Ensure it's an absolute URL with a scheme
 	if parsedURL.Scheme == "" {
 		http.Error(w, "URL must be absolute (include http:// or https://)", http.StatusBadRequest)
 		return
 	}
 
-	// Ensure it has a host
 	if parsedURL.Host == "" {
 		http.Error(w, "URL must include a host", http.StatusBadRequest)
 		return
 	}
 
-	// Only allow http and https schemes
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
 		http.Error(w, "URL scheme must be http or https", http.StatusBadRequest)
 		return
 	}
 
-	shortURL, err := h.service.ShortenURL(r.Context(), originalURL)
+	normalizedURL := parsedURL.String()
+
+	shortURL, err := h.service.ShortenURL(r.Context(), normalizedURL)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	// Construct the full URL from the request
 	scheme := "http"
 	if r.TLS != nil {
 		scheme = "https"
@@ -81,11 +78,16 @@ func (h *Handler) ShortenURL(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusBadRequest)
+		return
+	}
+
 	path := strings.TrimPrefix(r.URL.Path, "/")
 
 	originalURL, err := h.service.GetOriginalURL(r.Context(), path)
 	if err != nil {
-		http.Error(w, "URL not found", http.StatusNotFound)
+		http.Error(w, "URL not found", http.StatusBadRequest)
 		return
 	}
 
