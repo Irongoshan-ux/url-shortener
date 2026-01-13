@@ -15,6 +15,10 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+func newTestHandler(svc *service.Service) *Handler {
+	return NewHandler(svc, "")
+}
+
 type mockRepository struct {
 	urlsByShort    map[string]*model.URL
 	urlsByOriginal map[string]*model.URL
@@ -171,7 +175,7 @@ func TestHandler_ShortenURL(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := tt.setupRepo()
 			svc := service.NewService(repo)
-			h := NewHandler(svc)
+			h := newTestHandler(svc)
 
 			req := httptest.NewRequest(tt.method, "/", strings.NewReader(tt.body))
 			req.Host = "localhost"
@@ -257,7 +261,7 @@ func TestHandler_Redirect(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := tt.setupRepo()
 			svc := service.NewService(repo)
-			h := NewHandler(svc)
+			h := newTestHandler(svc)
 
 			r := chi.NewRouter()
 			h.RegisterRoutes(r)
@@ -387,7 +391,7 @@ func TestHandler_Root(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := tt.setupRepo()
 			svc := service.NewService(repo)
-			h := NewHandler(svc)
+			h := newTestHandler(svc)
 
 			r := chi.NewRouter()
 			h.RegisterRoutes(r)

@@ -12,11 +12,13 @@ import (
 
 type Handler struct {
 	service *service.Service
+	baseURL string
 }
 
-func NewHandler(svc *service.Service) *Handler {
+func NewHandler(svc *service.Service, baseURL string) *Handler {
 	return &Handler{
 		service: svc,
+		baseURL: baseURL,
 	}
 }
 
@@ -67,11 +69,16 @@ func (h *Handler) ShortenURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
+	var fullURL string
+	if h.baseURL != "" {
+		fullURL = h.baseURL + "/" + shortURL.ShortURL
+	} else {
+		scheme := "http"
+		if r.TLS != nil {
+			scheme = "https"
+		}
+		fullURL = scheme + "://" + r.Host + "/" + shortURL.ShortURL
 	}
-	fullURL := scheme + "://" + r.Host + "/" + shortURL.ShortURL
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
