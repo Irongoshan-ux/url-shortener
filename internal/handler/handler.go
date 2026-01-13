@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Irongoshan-ux/url-shortener/internal/service"
+	"github.com/go-chi/chi/v5"
 )
 
 type Handler struct {
@@ -78,14 +79,13 @@ func (h *Handler) ShortenURL(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusBadRequest)
+	shortID := chi.URLParam(r, "id")
+	if shortID == "" {
+		http.Error(w, "Short URL ID is required", http.StatusBadRequest)
 		return
 	}
 
-	path := strings.TrimPrefix(r.URL.Path, "/")
-
-	originalURL, err := h.service.GetOriginalURL(r.Context(), path)
+	originalURL, err := h.service.GetOriginalURL(r.Context(), shortID)
 	if err != nil {
 		http.Error(w, "URL not found", http.StatusBadRequest)
 		return
@@ -94,29 +94,30 @@ func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, originalURL, http.StatusTemporaryRedirect)
 }
 
-func (h *Handler) Root(w http.ResponseWriter, r *http.Request) {
-	path := strings.TrimPrefix(r.URL.Path, "/")
+func (h *Handler) RegisterRoutes(r chi.Router) {
+	// POST / - shorten URL
+	r.Post("/", h.ShortenURL)
 
-	switch r.Method {
-	case http.MethodGet:
-		// GET / - return error, GET /{id} - redirect
-		if path == "" {
-			http.Error(w, "Short URL ID is required", http.StatusBadRequest)
-			return
-		}
-		h.Redirect(w, r)
-	case http.MethodPost:
-		// POST / - shorten URL
-		if path != "" {
-			http.Error(w, "POST request should be to root path", http.StatusBadRequest)
-			return
-		}
-		h.ShortenURL(w, r)
-	default:
+	// GET /{id} - redirect to original URL
+	r.Get("/{id}", h.Redirect)
+
+	// GET / - return error
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "Short URL ID is required", http.StatusBadRequest)
+	})
+
+	// Handle all other methods and paths with 400
+	r.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Bad request", http.StatusBadRequest)
-	}
-}
+	})
 
-func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("/", h.Root)
+	// Handle 404 (paths with multiple segments like /smth/else)
+	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+		// Check if it's a GET request to a path with multiple segments
+		if r.Method == http.MethodGet {
+			http.Error(w, "Short URL ID is required", http.StatusBadRequest)
+		} else {
+			http.Error(w, "Bad request", http.StatusBadRequest)
+		}
+	})
 }

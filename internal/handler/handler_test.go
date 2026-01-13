@@ -12,6 +12,7 @@ import (
 	"github.com/Irongoshan-ux/url-shortener/internal/model"
 	"github.com/Irongoshan-ux/url-shortener/internal/repository"
 	"github.com/Irongoshan-ux/url-shortener/internal/service"
+	"github.com/go-chi/chi/v5"
 )
 
 type mockRepository struct {
@@ -258,10 +259,13 @@ func TestHandler_Redirect(t *testing.T) {
 			svc := service.NewService(repo)
 			h := NewHandler(svc)
 
+			r := chi.NewRouter()
+			h.RegisterRoutes(r)
+
 			req := httptest.NewRequest(tt.method, "/"+tt.path, nil)
 			w := httptest.NewRecorder()
 
-			h.Redirect(w, req)
+			r.ServeHTTP(w, req)
 
 			if w.Code != tt.expectedStatus {
 				t.Errorf("expected status %d, got %d", tt.expectedStatus, w.Code)
@@ -385,11 +389,14 @@ func TestHandler_Root(t *testing.T) {
 			svc := service.NewService(repo)
 			h := NewHandler(svc)
 
+			r := chi.NewRouter()
+			h.RegisterRoutes(r)
+
 			req := httptest.NewRequest(tt.method, "/"+tt.path, strings.NewReader(tt.body))
 			req.Host = "localhost"
 			w := httptest.NewRecorder()
 
-			h.Root(w, req)
+			r.ServeHTTP(w, req)
 
 			if w.Code != tt.expectedStatus {
 				t.Errorf("expected status %d, got %d", tt.expectedStatus, w.Code)
