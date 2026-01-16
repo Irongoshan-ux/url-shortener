@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/Irongoshan-ux/url-shortener/internal/model"
@@ -25,11 +26,11 @@ func (r *MemoryRepository) Create(ctx context.Context, url *model.URL) error {
 	defer r.mu.Unlock()
 
 	if _, exists := r.urlsByShort[url.ShortURL]; exists {
-		return ErrAlreadyExists
+		return fmt.Errorf("short id %q already exists: %w", url.ShortURL, ErrAlreadyExists)
 	}
 
-	if _, exists := r.urlsByOriginal[url.OriginalURL]; exists {
-		return ErrAlreadyExists
+	if existing, exists := r.urlsByOriginal[url.OriginalURL]; exists {
+		return fmt.Errorf("original url %q already shortened as %q: %w", url.OriginalURL, existing.ShortURL, ErrAlreadyExists)
 	}
 
 	r.urlsByShort[url.ShortURL] = url

@@ -2,12 +2,9 @@ package main
 
 import (
 	"log"
-	"net/http"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
+	"github.com/Irongoshan-ux/url-shortener/internal/app"
 	"github.com/Irongoshan-ux/url-shortener/internal/config"
-	"github.com/Irongoshan-ux/url-shortener/internal/handler"
 	"github.com/Irongoshan-ux/url-shortener/internal/repository"
 	"github.com/Irongoshan-ux/url-shortener/internal/service"
 )
@@ -19,21 +16,20 @@ func main() {
 	}
 
 	repo := repository.NewMemoryRepository()
-
 	svc := service.NewService(repo)
+	httpHandler, err := app.NewHTTPHandler(cfg, svc)
+	if err != nil {
+		log.Fatalf("Failed to initialize HTTP handler: %v", err)
+	}
 
-	h := handler.NewHandler(svc, cfg.BaseURL)
+	server, err := app.NewHTTPServer(cfg, httpHandler)
+	if err != nil {
+		log.Fatalf("Failed to initialize HTTP server: %v", err)
+	}
 
-	r := chi.NewRouter()
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
-
-	h.RegisterRoutes(r)
-
-	// Start server
 	log.Printf("Server starting on %s", cfg.ServerAddress)
 	log.Printf("Base URL: %s", cfg.BaseURL)
-	if err := http.ListenAndServe(cfg.ServerAddress, r); err != nil {
+	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
 }

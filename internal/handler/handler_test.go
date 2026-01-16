@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -9,70 +8,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Irongoshan-ux/url-shortener/internal/handler/mocks"
 	"github.com/Irongoshan-ux/url-shortener/internal/model"
 	"github.com/Irongoshan-ux/url-shortener/internal/repository"
-	"github.com/Irongoshan-ux/url-shortener/internal/service"
 	"github.com/go-chi/chi/v5"
+	"go.uber.org/mock/gomock"
 )
-
-func newTestHandler(svc *service.Service) *Handler {
-	return NewHandler(svc, "")
-}
-
-type mockRepository struct {
-	urlsByShort    map[string]*model.URL
-	urlsByOriginal map[string]*model.URL
-	createError    error
-	getError       error
-}
-
-func newMockRepository() *mockRepository {
-	return &mockRepository{
-		urlsByShort:    make(map[string]*model.URL),
-		urlsByOriginal: make(map[string]*model.URL),
-	}
-}
-
-func (m *mockRepository) Create(ctx context.Context, url *model.URL) error {
-	if m.createError != nil {
-		return m.createError
-	}
-	if _, exists := m.urlsByShort[url.ShortURL]; exists {
-		return repository.ErrAlreadyExists
-	}
-	if _, exists := m.urlsByOriginal[url.OriginalURL]; exists {
-		return repository.ErrAlreadyExists
-	}
-	m.urlsByShort[url.ShortURL] = url
-	m.urlsByOriginal[url.OriginalURL] = url
-	return nil
-}
-
-func (m *mockRepository) GetByShortURL(ctx context.Context, shortURL string) (*model.URL, error) {
-	if m.getError != nil {
-		return nil, m.getError
-	}
-	url, exists := m.urlsByShort[shortURL]
-	if !exists {
-		return nil, repository.ErrNotFound
-	}
-	return url, nil
-}
-
-func (m *mockRepository) GetByOriginalURL(ctx context.Context, originalURL string) (*model.URL, error) {
-	url, exists := m.urlsByOriginal[originalURL]
-	if !exists {
-		return nil, repository.ErrNotFound
-	}
-	return url, nil
-}
 
 func TestHandler_ShortenURL(t *testing.T) {
 	tests := []struct {
 		name            string
 		method          string
 		body            string
-		setupRepo       func() *mockRepository
 		expectedStatus  int
 		expectedBody    string
 		expectedOrigURL string
@@ -81,91 +28,49 @@ func TestHandler_ShortenURL(t *testing.T) {
 			name:   "successful shorten",
 			method: http.MethodPost,
 			body:   "https://example.com",
-			setupRepo: func() *mockRepository {
-				return newMockRepository()
-			},
 			expectedStatus:  http.StatusCreated,
 			expectedOrigURL: "https://example.com",
-		},
-		{
-			name:   "wrong method",
-			method: http.MethodGet,
-			body:   "https://example.com",
-			setupRepo: func() *mockRepository {
-				return newMockRepository()
-			},
-			expectedStatus: http.StatusBadRequest,
 		},
 		{
 			name:   "empty body",
 			method: http.MethodPost,
 			body:   "",
-			setupRepo: func() *mockRepository {
-				return newMockRepository()
-			},
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
 			name:   "invalid URL format",
 			method: http.MethodPost,
 			body:   "not a url",
-			setupRepo: func() *mockRepository {
-				return newMockRepository()
-			},
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
 			name:   "URL without scheme",
 			method: http.MethodPost,
 			body:   "example.com",
-			setupRepo: func() *mockRepository {
-				return newMockRepository()
-			},
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
 			name:   "URL without host",
 			method: http.MethodPost,
 			body:   "https://",
-			setupRepo: func() *mockRepository {
-				return newMockRepository()
-			},
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
 			name:   "invalid scheme",
 			method: http.MethodPost,
 			body:   "ftp://example.com",
-			setupRepo: func() *mockRepository {
-				return newMockRepository()
-			},
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:   "repository create error",
+			name:   "service error",
 			method: http.MethodPost,
 			body:   "https://example.com",
-			setupRepo: func() *mockRepository {
-				repo := newMockRepository()
-				repo.createError = errors.New("repository error")
-				return repo
-			},
-			expectedStatus: http.StatusBadRequest,
+			expectedStatus: http.StatusInternalServerError,
 		},
 		{
-			name:   "existing URL returns same short URL",
+			name:   "service returns deterministic short id",
 			method: http.MethodPost,
 			body:   "https://example.com",
-			setupRepo: func() *mockRepository {
-				repo := newMockRepository()
-				repo.urlsByOriginal["https://example.com"] = &model.URL{
-					OriginalURL: "https://example.com",
-					ShortURL:    "existing123",
-					CreatedAt:   time.Now(),
-				}
-				repo.urlsByShort["existing123"] = repo.urlsByOriginal["https://example.com"]
-				return repo
-			},
 			expectedStatus: http.StatusCreated,
 			expectedBody:   "http://localhost/existing123",
 		},
@@ -173,9 +78,29 @@ func TestHandler_ShortenURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo := tt.setupRepo()
-			svc := service.NewService(repo)
-			h := newTestHandler(svc)
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			svc := mocks.NewMockURLService(ctrl)
+
+			// Expectations for cases where handler should call service.
+			switch tt.name {
+			case "successful shorten":
+				svc.EXPECT().
+					ShortenURL(gomock.Any(), "https://example.com").
+					Return(&model.URL{OriginalURL: "https://example.com", ShortURL: "abc123", CreatedAt: time.Now()}, nil)
+			case "service error":
+				svc.EXPECT().
+					ShortenURL(gomock.Any(), "https://example.com").
+					Return(nil, errors.New("service failure"))
+			case "service returns deterministic short id":
+				svc.EXPECT().
+					ShortenURL(gomock.Any(), "https://example.com").
+					Return(&model.URL{OriginalURL: "https://example.com", ShortURL: "existing123", CreatedAt: time.Now()}, nil)
+			default:
+			}
+
+			h := NewHandler(svc, "")
 
 			req := httptest.NewRequest(tt.method, "/", strings.NewReader(tt.body))
 			req.Host = "localhost"
@@ -185,15 +110,6 @@ func TestHandler_ShortenURL(t *testing.T) {
 
 			if w.Code != tt.expectedStatus {
 				t.Errorf("expected status %d, got %d", tt.expectedStatus, w.Code)
-			}
-
-			if tt.expectedOrigURL != "" && tt.expectedStatus == http.StatusCreated {
-				storedURL, err := repo.GetByOriginalURL(req.Context(), tt.expectedOrigURL)
-				if err != nil {
-					t.Errorf("expected original URL %q to be stored, but got error: %v", tt.expectedOrigURL, err)
-				} else if storedURL.OriginalURL != tt.expectedOrigURL {
-					t.Errorf("expected stored original URL %q, got %q", tt.expectedOrigURL, storedURL.OriginalURL)
-				}
 			}
 
 			if tt.expectedBody != "" {
@@ -217,7 +133,6 @@ func TestHandler_Redirect(t *testing.T) {
 		name             string
 		method           string
 		path             string
-		setupRepo        func() *mockRepository
 		expectedStatus   int
 		expectedLocation string
 	}{
@@ -225,15 +140,6 @@ func TestHandler_Redirect(t *testing.T) {
 			name:   "successful redirect",
 			method: http.MethodGet,
 			path:   "abc123",
-			setupRepo: func() *mockRepository {
-				repo := newMockRepository()
-				repo.urlsByShort["abc123"] = &model.URL{
-					OriginalURL: "https://example.com",
-					ShortURL:    "abc123",
-					CreatedAt:   time.Now(),
-				}
-				return repo
-			},
 			expectedStatus:   http.StatusTemporaryRedirect,
 			expectedLocation: "https://example.com",
 		},
@@ -241,30 +147,35 @@ func TestHandler_Redirect(t *testing.T) {
 			name:   "URL not found",
 			method: http.MethodGet,
 			path:   "nonexistent",
-			setupRepo: func() *mockRepository {
-				return newMockRepository()
-			},
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
 			name:   "wrong method",
 			method: http.MethodPost,
 			path:   "abc123",
-			setupRepo: func() *mockRepository {
-				return newMockRepository()
-			},
 			expectedStatus: http.StatusBadRequest,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo := tt.setupRepo()
-			svc := service.NewService(repo)
-			h := newTestHandler(svc)
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			svc := mocks.NewMockURLService(ctrl)
+
+			switch tt.name {
+			case "successful redirect":
+				svc.EXPECT().GetOriginalURL(gomock.Any(), "abc123").Return("https://example.com", nil)
+			case "URL not found":
+				svc.EXPECT().GetOriginalURL(gomock.Any(), "nonexistent").Return("", repository.ErrNotFound)
+			default:
+			}
+
+			h := NewHandler(svc, "")
 
 			r := chi.NewRouter()
-			h.RegisterRoutes(r)
+			r.Mount("/", h.Router())
 
 			req := httptest.NewRequest(tt.method, "/"+tt.path, nil)
 			w := httptest.NewRecorder()
@@ -291,49 +202,30 @@ func TestHandler_Root(t *testing.T) {
 		method         string
 		path           string
 		body           string
-		setupRepo      func() *mockRepository
 		expectedStatus int
 	}{
 		{
 			name:   "GET / - should return error",
 			method: http.MethodGet,
 			path:   "",
-			setupRepo: func() *mockRepository {
-				return newMockRepository()
-			},
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
 			name:   "GET /smth - should return error",
 			method: http.MethodGet,
 			path:   "smth",
-			setupRepo: func() *mockRepository {
-				return newMockRepository()
-			},
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
 			name:   "GET /smth/else - should return error",
 			method: http.MethodGet,
 			path:   "smth/else",
-			setupRepo: func() *mockRepository {
-				return newMockRepository()
-			},
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
 			name:   "GET /{id} - should redirect",
 			method: http.MethodGet,
 			path:   "abc123",
-			setupRepo: func() *mockRepository {
-				repo := newMockRepository()
-				repo.urlsByShort["abc123"] = &model.URL{
-					OriginalURL: "https://example.com",
-					ShortURL:    "abc123",
-					CreatedAt:   time.Now(),
-				}
-				return repo
-			},
 			expectedStatus: http.StatusTemporaryRedirect,
 		},
 		{
@@ -341,9 +233,6 @@ func TestHandler_Root(t *testing.T) {
 			method: http.MethodPost,
 			path:   "",
 			body:   "https://example.com",
-			setupRepo: func() *mockRepository {
-				return newMockRepository()
-			},
 			expectedStatus: http.StatusCreated,
 		},
 		{
@@ -351,9 +240,6 @@ func TestHandler_Root(t *testing.T) {
 			method: http.MethodPost,
 			path:   "abc123",
 			body:   "https://example.com",
-			setupRepo: func() *mockRepository {
-				return newMockRepository()
-			},
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
@@ -361,9 +247,6 @@ func TestHandler_Root(t *testing.T) {
 			method: http.MethodPost,
 			path:   "",
 			body:   "",
-			setupRepo: func() *mockRepository {
-				return newMockRepository()
-			},
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
@@ -371,30 +254,36 @@ func TestHandler_Root(t *testing.T) {
 			method: http.MethodPost,
 			path:   "smth",
 			body:   "http://test.com",
-			setupRepo: func() *mockRepository {
-				return newMockRepository()
-			},
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
 			name:   "PUT / - should return error",
 			method: http.MethodPut,
 			path:   "",
-			setupRepo: func() *mockRepository {
-				return newMockRepository()
-			},
 			expectedStatus: http.StatusBadRequest,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo := tt.setupRepo()
-			svc := service.NewService(repo)
-			h := newTestHandler(svc)
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			svc := mocks.NewMockURLService(ctrl)
+			h := NewHandler(svc, "")
 
 			r := chi.NewRouter()
-			h.RegisterRoutes(r)
+			r.Mount("/", h.Router())
+
+			switch tt.name {
+			case "GET /smth - should return error":
+				svc.EXPECT().GetOriginalURL(gomock.Any(), "smth").Return("", repository.ErrNotFound)
+			case "GET /{id} - should redirect":
+				svc.EXPECT().GetOriginalURL(gomock.Any(), "abc123").Return("https://example.com", nil)
+			case "POST / - should shorten":
+				svc.EXPECT().ShortenURL(gomock.Any(), "https://example.com").Return(&model.URL{OriginalURL: "https://example.com", ShortURL: "abc123", CreatedAt: time.Now()}, nil)
+			default:
+			}
 
 			req := httptest.NewRequest(tt.method, "/"+tt.path, strings.NewReader(tt.body))
 			req.Host = "localhost"

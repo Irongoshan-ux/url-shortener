@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"time"
 
@@ -12,17 +13,24 @@ import (
 )
 
 type Service struct {
-	repo repository.Repository
+	repo Repository
+	maxAttempts int
+	idGen       func() (string, error)
 }
 
-func NewService(repo repository.Repository) *Service {
-	return &Service{
-		repo: repo,
+func NewService(repo Repository, opts ...Option) *Service {
+	s := &Service{
+		repo:        repo,
+		maxAttempts: 10,
 	}
+	s.idGen = s.generateShortID
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 func (s *Service) ShortenURL(ctx context.Context, originalURL string) (*model.URL, error) {
-	// Check if URL already exists
 	existingURL, err := s.repo.GetByOriginalURL(ctx, originalURL)
 	if err == nil {
 		return existingURL, nil
@@ -31,26 +39,40 @@ func (s *Service) ShortenURL(ctx context.Context, originalURL string) (*model.UR
 		return nil, fmt.Errorf("failed to check existing URL: %w", err)
 	}
 
-	shortID, err := s.generateShortID()
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate short ID: %w", err)
+	for attempt := 0; attempt < s.maxAttempts; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
+		shortID, err := s.idGen()
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate short ID: %w", err)
+		}
+
+		url := &model.URL{
+			OriginalURL: originalURL,
+			ShortURL:    shortID,
+			CreatedAt:   time.Now(),
+		}
+
+		if err := s.repo.Create(ctx, url); err != nil {
+			if !errors.Is(err, repository.ErrAlreadyExists) {
+				return nil, fmt.Errorf("failed to create URL: %w", err)
+			}
+
+			if existingURL, getErr := s.repo.GetByOriginalURL(ctx, originalURL); getErr == nil {
+				return existingURL, nil
+			}
+
+			continue
+		}
+
+		return url, nil
 	}
 
-	url := &model.URL{
-		OriginalURL: originalURL,
-		ShortURL:    shortID, // Store just the short ID, not the full URL
-		CreatedAt:   time.Now(),
-	}
-
-	// Store in repository
-	if err := s.repo.Create(ctx, url); err != nil {
-		return nil, fmt.Errorf("failed to create URL: %w", err)
-	}
-
-	return url, nil
+	return nil, fmt.Errorf("failed to create URL after %d attempts due to short id collisions", s.maxAttempts)
 }
 
-// GetOriginalURL retrieves the original URL from a short ID
 func (s *Service) GetOriginalURL(ctx context.Context, shortID string) (string, error) {
 	url, err := s.repo.GetByShortURL(ctx, shortID)
 	if err != nil {

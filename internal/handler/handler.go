@@ -1,21 +1,24 @@
 package handler
 
 import (
+	"errors"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
 
-	"github.com/Irongoshan-ux/url-shortener/internal/service"
+	"github.com/Irongoshan-ux/url-shortener/internal/repository"
+	"github.com/Irongoshan-ux/url-shortener/internal/validation"
 	"github.com/go-chi/chi/v5"
 )
 
 type Handler struct {
-	service *service.Service
+	service URLService
 	baseURL string
 }
 
-func NewHandler(svc *service.Service, baseURL string) *Handler {
+func NewHandler(svc URLService, baseURL string) *Handler {
 	return &Handler{
 		service: svc,
 		baseURL: baseURL,
@@ -23,11 +26,6 @@ func NewHandler(svc *service.Service, baseURL string) *Handler {
 }
 
 func (h *Handler) ShortenURL(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusBadRequest)
-		return
-	}
-
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "Failed to read request body", http.StatusBadRequest)
@@ -40,44 +38,38 @@ func (h *Handler) ShortenURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	parsedURL, err := url.Parse(originalURL)
+	parsedURL, err := validation.ParseHTTPURL(originalURL)
 	if err != nil {
-		http.Error(w, "Invalid URL format", http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-
-	if parsedURL.Scheme == "" {
-		http.Error(w, "URL must be absolute (include http:// or https://)", http.StatusBadRequest)
-		return
-	}
-
-	if parsedURL.Host == "" {
-		http.Error(w, "URL must include a host", http.StatusBadRequest)
-		return
-	}
-
-	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-		http.Error(w, "URL scheme must be http or https", http.StatusBadRequest)
-		return
-	}
-
 	normalizedURL := parsedURL.String()
 
 	shortURL, err := h.service.ShortenURL(r.Context(), normalizedURL)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		log.Printf("shorten url failed: %v", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
 	var fullURL string
 	if h.baseURL != "" {
-		fullURL = h.baseURL + "/" + shortURL.ShortURL
+		fullURL, err = url.JoinPath(h.baseURL, shortURL.ShortURL)
+		if err != nil {
+			http.Error(w, "Failed to build short URL", http.StatusInternalServerError)
+			return
+		}
 	} else {
 		scheme := "http"
 		if r.TLS != nil {
 			scheme = "https"
 		}
-		fullURL = scheme + "://" + r.Host + "/" + shortURL.ShortURL
+		base := scheme + "://" + r.Host
+		fullURL, err = url.JoinPath(base, shortURL.ShortURL)
+		if err != nil {
+			http.Error(w, "Failed to build short URL", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	w.Header().Set("Content-Type", "text/plain")
@@ -94,37 +86,41 @@ func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
 
 	originalURL, err := h.service.GetOriginalURL(r.Context(), shortID)
 	if err != nil {
-		http.Error(w, "URL not found", http.StatusBadRequest)
+		if errors.Is(err, repository.ErrNotFound) {
+			http.Error(w, "URL not found", http.StatusBadRequest)
+			return
+		}
+
+		log.Printf("get original url failed: %v", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
 	http.Redirect(w, r, originalURL, http.StatusTemporaryRedirect)
 }
 
-func (h *Handler) RegisterRoutes(r chi.Router) {
-	// POST / - shorten URL
+func (h *Handler) Router() chi.Router {
+	r := chi.NewRouter()
+
 	r.Post("/", h.ShortenURL)
 
-	// GET /{id} - redirect to original URL
 	r.Get("/{id}", h.Redirect)
 
-	// GET / - return error
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Short URL ID is required", http.StatusBadRequest)
 	})
 
-	// Handle all other methods and paths with 400
 	r.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Bad request", http.StatusBadRequest)
 	})
 
-	// Handle 404 (paths with multiple segments like /smth/else)
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
-		// Check if it's a GET request to a path with multiple segments
 		if r.Method == http.MethodGet {
 			http.Error(w, "Short URL ID is required", http.StatusBadRequest)
 		} else {
 			http.Error(w, "Bad request", http.StatusBadRequest)
 		}
 	})
+
+	return r
 }
