@@ -2,6 +2,17 @@ package config
 
 import (
 	"flag"
+	"os"
+)
+
+const (
+	defaultServerAddress = "localhost:8080"
+	defaultBaseURL       = "http://localhost:8080"
+)
+
+const (
+	envServerAddress = "SERVER_ADDRESS"
+	envBaseURL       = "BASE_URL"
 )
 
 type Config struct {
@@ -12,9 +23,16 @@ type Config struct {
 func Load() (*Config, error) {
 	var cfg Config
 
-	flag.StringVar(&cfg.ServerAddress, "a", "localhost:8080", "HTTP server address")
-	flag.StringVar(&cfg.BaseURL, "b", "http://localhost:8080", "Base URL for shortened URLs")
+	flag.StringVar(&cfg.ServerAddress, "a", defaultServerAddress, "HTTP server address")
+	flag.StringVar(&cfg.BaseURL, "b", defaultBaseURL, "Base URL for shortened URLs")
 	flag.Parse()
+
+	if v := os.Getenv(envServerAddress); v != "" {
+		cfg.ServerAddress = v
+	}
+	if v := os.Getenv(envBaseURL); v != "" {
+		cfg.BaseURL = v
+	}
 
 	return &cfg, nil
 }
