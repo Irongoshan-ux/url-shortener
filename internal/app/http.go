@@ -21,6 +21,7 @@ func NewHTTPHandler(cfg *config.Config, svc *service.Service) (http.Handler, err
 
 	log := zerolog.New(os.Stdout).With().Timestamp().Logger()
 	r := chi.NewRouter()
+	r.Use(GzipMiddleware)
 	r.Use(LoggingMiddleware(log))
 	r.Use(middleware.Recoverer)
 
