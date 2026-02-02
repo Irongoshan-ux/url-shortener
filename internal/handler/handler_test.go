@@ -196,6 +196,101 @@ func TestHandler_Redirect(t *testing.T) {
 	}
 }
 
+func TestHandler_ShortenURLJSON(t *testing.T) {
+	tests := []struct {
+		name           string
+		body           string
+		baseURL        string
+		expectedStatus int
+		expectedBody   string
+		expectJSON     bool
+		setupMock      func(*mocks.MockURLService)
+	}{
+		{
+			name:           "successful shorten",
+			body:           `{"url":"https://practicum.yandex.ru"}`,
+			baseURL:        "http://localhost:8080",
+			expectedStatus: http.StatusCreated,
+			expectedBody:   `{"result":"http://localhost:8080/EwHXdJfB"}`,
+			expectJSON:     true,
+			setupMock: func(s *mocks.MockURLService) {
+				s.EXPECT().
+					ShortenURL(gomock.Any(), "https://practicum.yandex.ru").
+					Return(&model.URL{OriginalURL: "https://practicum.yandex.ru", ShortURL: "EwHXdJfB", CreatedAt: time.Now()}, nil)
+			},
+		},
+		{
+			name:           "empty url",
+			body:           `{"url":""}`,
+			expectedStatus: http.StatusBadRequest,
+			setupMock:      func(*mocks.MockURLService) {},
+		},
+		{
+			name:           "missing url field",
+			body:           `{}`,
+			expectedStatus: http.StatusBadRequest,
+			setupMock:      func(*mocks.MockURLService) {},
+		},
+		{
+			name:           "invalid JSON",
+			body:           `{url: no quotes}`,
+			expectedStatus: http.StatusBadRequest,
+			setupMock:      func(*mocks.MockURLService) {},
+		},
+		{
+			name:           "invalid URL format",
+			body:           `{"url":"not a url"}`,
+			expectedStatus: http.StatusBadRequest,
+			setupMock:      func(*mocks.MockURLService) {},
+		},
+		{
+			name:           "service error",
+			body:           `{"url":"https://example.com"}`,
+			expectedStatus: http.StatusInternalServerError,
+			setupMock: func(s *mocks.MockURLService) {
+				s.EXPECT().
+					ShortenURL(gomock.Any(), "https://example.com").
+					Return(nil, errors.New("service failure"))
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			svc := mocks.NewMockURLService(ctrl)
+			tt.setupMock(svc)
+
+			h := NewHandler(svc, tt.baseURL)
+
+			req := httptest.NewRequest(http.MethodPost, "/api/shorten", strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			req.Host = "localhost"
+			w := httptest.NewRecorder()
+
+			r := chi.NewRouter()
+			r.Mount("/", h.Router())
+			r.ServeHTTP(w, req)
+
+			if w.Code != tt.expectedStatus {
+				t.Errorf("expected status %d, got %d", tt.expectedStatus, w.Code)
+			}
+
+			if tt.expectJSON {
+				if ct := w.Header().Get("Content-Type"); ct != "application/json" {
+					t.Errorf("expected Content-Type application/json, got %s", ct)
+				}
+				body := strings.TrimSpace(w.Body.String())
+				if body != tt.expectedBody {
+					t.Errorf("expected body %q, got %q", tt.expectedBody, body)
+				}
+			}
+		})
+	}
+}
+
 func TestHandler_Root(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -262,6 +357,13 @@ func TestHandler_Root(t *testing.T) {
 			path:   "",
 			expectedStatus: http.StatusBadRequest,
 		},
+		{
+			name:           "POST /api/shorten - should shorten",
+			method:         http.MethodPost,
+			path:           "api/shorten",
+			body:           `{"url":"https://example.com"}`,
+			expectedStatus: http.StatusCreated,
+		},
 	}
 
 	for _, tt := range tests {
@@ -281,6 +383,8 @@ func TestHandler_Root(t *testing.T) {
 			case "GET /{id} - should redirect":
 				svc.EXPECT().GetOriginalURL(gomock.Any(), "abc123").Return("https://example.com", nil)
 			case "POST / - should shorten":
+				svc.EXPECT().ShortenURL(gomock.Any(), "https://example.com").Return(&model.URL{OriginalURL: "https://example.com", ShortURL: "abc123", CreatedAt: time.Now()}, nil)
+			case "POST /api/shorten - should shorten":
 				svc.EXPECT().ShortenURL(gomock.Any(), "https://example.com").Return(&model.URL{OriginalURL: "https://example.com", ShortURL: "abc123", CreatedAt: time.Now()}, nil)
 			default:
 			}
