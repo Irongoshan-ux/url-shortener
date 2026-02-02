@@ -15,7 +15,10 @@ func main() {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
 
-	repo := repository.NewMemoryRepository()
+	repo, err := repository.NewFileRepository(cfg.FileStoragePath)
+	if err != nil {
+		log.Fatalf("Failed to create repository: %v", err)
+	}
 	svc := service.NewService(repo)
 	httpHandler, err := app.NewHTTPHandler(cfg, svc)
 	if err != nil {
@@ -29,6 +32,7 @@ func main() {
 
 	log.Printf("Server starting on %s", cfg.ServerAddress)
 	log.Printf("Base URL: %s", cfg.BaseURL)
+	log.Printf("Storage file: %s", cfg.FileStoragePath)
 	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
