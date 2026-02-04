@@ -2,43 +2,27 @@ package config
 
 import (
 	"flag"
-	"os"
-)
 
-const (
-	defaultServerAddress   = "localhost:8080"
-	defaultBaseURL         = "http://localhost:8080"
-	defaultFileStoragePath = "urls.json"
-)
-
-const (
-	envServerAddress   = "SERVER_ADDRESS"
-	envBaseURL         = "BASE_URL"
-	envFileStoragePath = "FILE_STORAGE_PATH"
+	"github.com/ilyakaznacheev/cleanenv"
 )
 
 type Config struct {
-	ServerAddress   string
-	BaseURL         string
-	FileStoragePath string
+	ServerAddress   string `env:"SERVER_ADDRESS"`
+	BaseURL         string `env:"BASE_URL"`
+	FileStoragePath string `env:"FILE_STORAGE_PATH"`
 }
 
 func Load() (*Config, error) {
 	var cfg Config
 
-	flag.StringVar(&cfg.ServerAddress, "a", defaultServerAddress, "HTTP server address")
-	flag.StringVar(&cfg.BaseURL, "b", defaultBaseURL, "Base URL for shortened URLs")
-	flag.StringVar(&cfg.FileStoragePath, "f", defaultFileStoragePath, "Path to file for URL storage (JSON)")
+	flag.StringVar(&cfg.ServerAddress, "a", "localhost:8080", "HTTP server address")
+	flag.StringVar(&cfg.BaseURL, "b", "http://localhost:8080", "Base URL for shortened URLs")
+	flag.StringVar(&cfg.FileStoragePath, "f", "urls.json", "Path to file for URL storage (JSON)")
 	flag.Parse()
 
-	if v := os.Getenv(envServerAddress); v != "" {
-		cfg.ServerAddress = v
-	}
-	if v := os.Getenv(envBaseURL); v != "" {
-		cfg.BaseURL = v
-	}
-	if v := os.Getenv(envFileStoragePath); v != "" {
-		cfg.FileStoragePath = v
+	// Env overrides flag/default (cleanenv reads only from env when set)
+	if err := cleanenv.ReadEnv(&cfg); err != nil {
+		return nil, err
 	}
 
 	return &cfg, nil

@@ -8,18 +8,19 @@ import (
 	"sync"
 
 	"github.com/Irongoshan-ux/url-shortener/internal/model"
+	"github.com/google/uuid"
 )
 
 type fileRecord struct {
-	UUID        string `json:"uuid"`
-	ShortURL    string `json:"short_url"`
-	OriginalURL string `json:"original_url"`
+	UUID        uuid.UUID `json:"uuid"`
+	ShortURL    string    `json:"short_url"`
+	OriginalURL string    `json:"original_url"`
 }
 
 type FileRepository struct {
 	path string
 	mem  *MemoryRepository
-	mu   sync.Mutex
+	mu   sync.RWMutex
 }
 
 func NewFileRepository(path string) (*FileRepository, error) {
@@ -64,7 +65,7 @@ func (f *FileRepository) save() error {
 	records := make([]fileRecord, 0, len(f.mem.urlsByShort))
 	for _, u := range f.mem.urlsByShort {
 		records = append(records, fileRecord{
-			UUID:        u.ShortURL,
+			UUID:        uuid.New(),
 			ShortURL:    u.ShortURL,
 			OriginalURL: u.OriginalURL,
 		})

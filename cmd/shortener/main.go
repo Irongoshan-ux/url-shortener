@@ -1,39 +1,42 @@
 package main
 
 import (
-	"log"
+	"os"
 
 	"github.com/Irongoshan-ux/url-shortener/internal/app"
 	"github.com/Irongoshan-ux/url-shortener/internal/config"
 	"github.com/Irongoshan-ux/url-shortener/internal/repository"
 	"github.com/Irongoshan-ux/url-shortener/internal/service"
+	"github.com/rs/zerolog"
 )
 
 func main() {
+	logger := zerolog.New(os.Stdout).With().Timestamp().Logger()
+
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("Failed to load configuration: %v", err)
+		logger.Fatal().Err(err).Msg("Failed to load configuration")
 	}
 
 	repo, err := repository.NewFileRepository(cfg.FileStoragePath)
 	if err != nil {
-		log.Fatalf("Failed to create repository: %v", err)
+		logger.Fatal().Err(err).Msg("Failed to create repository")
 	}
 	svc := service.NewService(repo)
 	httpHandler, err := app.NewHTTPHandler(cfg, svc)
 	if err != nil {
-		log.Fatalf("Failed to initialize HTTP handler: %v", err)
+		logger.Fatal().Err(err).Msg("Failed to initialize HTTP handler")
 	}
 
 	server, err := app.NewHTTPServer(cfg, httpHandler)
 	if err != nil {
-		log.Fatalf("Failed to initialize HTTP server: %v", err)
+		logger.Fatal().Err(err).Msg("Failed to initialize HTTP server")
 	}
 
-	log.Printf("Server starting on %s", cfg.ServerAddress)
-	log.Printf("Base URL: %s", cfg.BaseURL)
-	log.Printf("Storage file: %s", cfg.FileStoragePath)
+	logger.Info().Str("server", cfg.ServerAddress).Msg("Server starting")
+	logger.Info().Str("base_url", cfg.BaseURL).Msg("Base URL")
+	logger.Info().Str("storage_file", cfg.FileStoragePath).Msg("Storage file")
 	if err := server.ListenAndServe(); err != nil {
-		log.Fatalf("Server failed to start: %v", err)
+		logger.Fatal().Err(err).Msg("Server failed to start")
 	}
 }
