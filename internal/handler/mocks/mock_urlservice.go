@@ -14,6 +14,7 @@ import (
 	reflect "reflect"
 
 	model "github.com/Irongoshan-ux/url-shortener/internal/model"
+	service "github.com/Irongoshan-ux/url-shortener/internal/service"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -69,4 +70,19 @@ func (m *MockURLService) ShortenURL(ctx context.Context, originalURL string) (*m
 func (mr *MockURLServiceMockRecorder) ShortenURL(ctx, originalURL any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ShortenURL", reflect.TypeOf((*MockURLService)(nil).ShortenURL), ctx, originalURL)
+}
+
+// ShortenURLBatch mocks base method.
+func (m *MockURLService) ShortenURLBatch(ctx context.Context, items []service.BatchItem) ([]service.BatchResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ShortenURLBatch", ctx, items)
+	ret0, _ := ret[0].([]service.BatchResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ShortenURLBatch indicates an expected call of ShortenURLBatch.
+func (mr *MockURLServiceMockRecorder) ShortenURLBatch(ctx, items any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ShortenURLBatch", reflect.TypeOf((*MockURLService)(nil).ShortenURLBatch), ctx, items)
 }

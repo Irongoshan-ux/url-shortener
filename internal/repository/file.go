@@ -89,6 +89,18 @@ func (f *FileRepository) Create(ctx context.Context, url *model.URL) error {
 	return err
 }
 
+func (f *FileRepository) CreateBatch(ctx context.Context, urls []*model.URL) error {
+	if len(urls) == 0 {
+		return nil
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.mem.CreateBatch(ctx, urls); err != nil {
+		return err
+	}
+	return f.save()
+}
+
 func (f *FileRepository) GetByShortURL(ctx context.Context, shortURL string) (*model.URL, error) {
 	return f.mem.GetByShortURL(ctx, shortURL)
 }

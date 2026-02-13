@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 	"github.com/Irongoshan-ux/url-shortener/internal/handler/mocks"
 	"github.com/Irongoshan-ux/url-shortener/internal/model"
 	"github.com/Irongoshan-ux/url-shortener/internal/repository"
+	"github.com/Irongoshan-ux/url-shortener/internal/service"
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/mock/gomock"
 )
@@ -289,6 +291,74 @@ func TestHandler_ShortenURLJSON(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHandler_ShortenURLBatch(t *testing.T) {
+	t.Run("successful batch", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		svc := mocks.NewMockURLService(ctrl)
+		svc.EXPECT().
+			ShortenURLBatch(gomock.Any(), gomock.Cond(func(items any) bool {
+				list, ok := items.([]service.BatchItem)
+				return ok && len(list) == 2 && list[0].CorrelationID == "1" && list[1].CorrelationID == "2"
+			})).
+			Return([]service.BatchResult{
+				{CorrelationID: "1", ShortURL: "id1"},
+				{CorrelationID: "2", ShortURL: "id2"},
+			}, nil)
+		h := NewHandler(svc, "http://localhost:8080")
+		body := `[{"correlation_id":"1","original_url":"https://a.com"},{"correlation_id":"2","original_url":"https://b.com"}]`
+		req := httptest.NewRequest(http.MethodPost, "/api/shorten/batch", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Host = "localhost"
+		w := httptest.NewRecorder()
+		r := chi.NewRouter()
+		r.Mount("/", h.Router())
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusCreated {
+			t.Errorf("expected status %d, got %d", http.StatusCreated, w.Code)
+		}
+		if ct := w.Header().Get("Content-Type"); ct != "application/json" {
+			t.Errorf("expected Content-Type application/json, got %s", ct)
+		}
+		var resp []batchResponseItem
+		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+		if len(resp) != 2 || resp[0].CorrelationID != "1" || resp[0].ShortURL != "http://localhost:8080/id1" ||
+			resp[1].CorrelationID != "2" || resp[1].ShortURL != "http://localhost:8080/id2" {
+			t.Errorf("unexpected response: %+v", resp)
+		}
+	})
+	t.Run("empty batch", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		h := NewHandler(mocks.NewMockURLService(ctrl), "")
+		req := httptest.NewRequest(http.MethodPost, "/api/shorten/batch", strings.NewReader("[]"))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		r := chi.NewRouter()
+		r.Mount("/", h.Router())
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected status %d, got %d", http.StatusBadRequest, w.Code)
+		}
+	})
+	t.Run("invalid JSON", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		h := NewHandler(mocks.NewMockURLService(ctrl), "")
+		req := httptest.NewRequest(http.MethodPost, "/api/shorten/batch", strings.NewReader("not json"))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		r := chi.NewRouter()
+		r.Mount("/", h.Router())
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected status %d, got %d", http.StatusBadRequest, w.Code)
+		}
+	})
 }
 
 func TestHandler_Root(t *testing.T) {

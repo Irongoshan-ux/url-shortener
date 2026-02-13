@@ -37,6 +37,9 @@ func main() {
 		logger.Fatal().Err(err).Msg("Failed to load configuration")
 	}
 
+	var repo service.Repository
+	var db *sql.DB
+
 	if cfg.DatabaseDSN != "" {
 		migrationsPath := "migrations"
 		if p := os.Getenv("MIGRATIONS_PATH"); p != "" {
@@ -45,25 +48,19 @@ func main() {
 		if err := runMigrations(cfg.DatabaseDSN, migrationsPath); err != nil {
 			logger.Fatal().Err(err).Msg("Failed to run migrations")
 		}
-	}
-
-	var repo service.Repository
-	if cfg.FileStoragePath != "" {
+		db, err = sql.Open("postgres", cfg.DatabaseDSN)
+		if err != nil {
+			logger.Fatal().Err(err).Msg("Failed to open database")
+		}
+		defer db.Close()
+		repo = repository.NewPostgresRepository(db)
+	} else if cfg.FileStoragePath != "" {
 		repo, err = repository.NewFileRepository(cfg.FileStoragePath)
 		if err != nil {
 			logger.Fatal().Err(err).Msg("Failed to create file repository")
 		}
 	} else {
 		repo = repository.NewMemoryRepository()
-	}
-
-	var db *sql.DB
-	if cfg.DatabaseDSN != "" {
-		db, err = sql.Open("postgres", cfg.DatabaseDSN)
-		if err != nil {
-			logger.Fatal().Err(err).Msg("Failed to open database")
-		}
-		defer db.Close()
 	}
 
 	svc := service.NewService(repo)
@@ -79,7 +76,6 @@ func main() {
 
 	logger.Info().Str("server", cfg.ServerAddress).Msg("Server starting")
 	logger.Info().Str("base_url", cfg.BaseURL).Msg("Base URL")
-	logger.Info().Str("storage_file", cfg.FileStoragePath).Msg("Storage file")
 	if err := server.ListenAndServe(); err != nil {
 		logger.Fatal().Err(err).Msg("Server failed to start")
 	}

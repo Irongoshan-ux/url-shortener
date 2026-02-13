@@ -82,6 +82,66 @@ func (s *Service) GetOriginalURL(ctx context.Context, shortID string) (string, e
 	return url.OriginalURL, nil
 }
 
+type BatchItem struct {
+	CorrelationID string
+	OriginalURL   string
+}
+
+type BatchResult struct {
+	CorrelationID string
+	ShortURL      string
+}
+
+func (s *Service) ShortenURLBatch(ctx context.Context, items []BatchItem) ([]BatchResult, error) {
+	if len(items) == 0 {
+		return nil, nil
+	}
+	results := make([]BatchResult, len(items))
+	type indexCorr struct{ index int; correlationID string }
+	toCreateByURL := make(map[string][]indexCorr)
+	var uniqueOrder []string
+
+	for i, item := range items {
+		existing, err := s.repo.GetByOriginalURL(ctx, item.OriginalURL)
+		if err == nil {
+			results[i] = BatchResult{CorrelationID: item.CorrelationID, ShortURL: existing.ShortURL}
+			continue
+		}
+		if err != repository.ErrNotFound {
+			return nil, fmt.Errorf("get existing URL: %w", err)
+		}
+		if _, ok := toCreateByURL[item.OriginalURL]; !ok {
+			uniqueOrder = append(uniqueOrder, item.OriginalURL)
+		}
+		toCreateByURL[item.OriginalURL] = append(toCreateByURL[item.OriginalURL], indexCorr{i, item.CorrelationID})
+	}
+
+	if len(uniqueOrder) > 0 {
+		urlsToCreate := make([]*model.URL, 0, len(uniqueOrder))
+		for _, origURL := range uniqueOrder {
+			shortID, err := s.idGen()
+			if err != nil {
+				return nil, fmt.Errorf("generate short ID: %w", err)
+			}
+			urlsToCreate = append(urlsToCreate, &model.URL{
+				OriginalURL: origURL,
+				ShortURL:    shortID,
+				CreatedAt:   time.Now(),
+			})
+		}
+		if err := s.repo.CreateBatch(ctx, urlsToCreate); err != nil {
+			return nil, fmt.Errorf("create batch: %w", err)
+		}
+		for j, u := range urlsToCreate {
+			for _, ic := range toCreateByURL[uniqueOrder[j]] {
+				results[ic.index] = BatchResult{CorrelationID: ic.correlationID, ShortURL: u.ShortURL}
+			}
+		}
+	}
+
+	return results, nil
+}
+
 func (s *Service) generateShortID() (string, error) {
 	b := make([]byte, 6)
 	if _, err := rand.Read(b); err != nil {
