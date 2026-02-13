@@ -3,7 +3,11 @@ package main
 import (
 	"database/sql"
 	"os"
+	"path/filepath"
 
+	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 	_ "github.com/lib/pq"
 
 	"github.com/Irongoshan-ux/url-shortener/internal/app"
@@ -13,6 +17,18 @@ import (
 	"github.com/rs/zerolog"
 )
 
+func runMigrations(dsn string, migrationsPath string) error {
+	m, err := migrate.New("file://"+filepath.ToSlash(migrationsPath), dsn)
+	if err != nil {
+		return err
+	}
+	defer m.Close()
+	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+		return err
+	}
+	return nil
+}
+
 func main() {
 	logger := zerolog.New(os.Stdout).With().Timestamp().Logger()
 
@@ -21,9 +37,24 @@ func main() {
 		logger.Fatal().Err(err).Msg("Failed to load configuration")
 	}
 
-	repo, err := repository.NewFileRepository(cfg.FileStoragePath)
-	if err != nil {
-		logger.Fatal().Err(err).Msg("Failed to create repository")
+	if cfg.DatabaseDSN != "" {
+		migrationsPath := "migrations"
+		if p := os.Getenv("MIGRATIONS_PATH"); p != "" {
+			migrationsPath = p
+		}
+		if err := runMigrations(cfg.DatabaseDSN, migrationsPath); err != nil {
+			logger.Fatal().Err(err).Msg("Failed to run migrations")
+		}
+	}
+
+	var repo service.Repository
+	if cfg.FileStoragePath != "" {
+		repo, err = repository.NewFileRepository(cfg.FileStoragePath)
+		if err != nil {
+			logger.Fatal().Err(err).Msg("Failed to create file repository")
+		}
+	} else {
+		repo = repository.NewMemoryRepository()
 	}
 
 	var db *sql.DB

@@ -18,7 +18,7 @@ func Load() (*Config, error) {
 
 	flag.StringVar(&cfg.ServerAddress, "a", "localhost:8080", "HTTP server address")
 	flag.StringVar(&cfg.BaseURL, "b", "http://localhost:8080", "Base URL for shortened URLs")
-	flag.StringVar(&cfg.FileStoragePath, "f", "urls.json", "Path to file for URL storage (JSON)")
+	flag.StringVar(&cfg.FileStoragePath, "f", "", "Path to file for URL storage (JSON)")
 	flag.StringVar(&cfg.DatabaseDSN, "d", "", "PostgreSQL connection string (DATABASE_DSN)")
 	flag.Parse()
 
