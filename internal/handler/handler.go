@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"log"
@@ -13,6 +14,14 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+type shortenRequest struct {
+	URL string `json:"url"`
+}
+
+type shortenResponse struct {
+	Result string `json:"result"`
+}
+
 type Handler struct {
 	service URLService
 	baseURL string
@@ -23,6 +32,18 @@ func NewHandler(svc URLService, baseURL string) *Handler {
 		service: svc,
 		baseURL: baseURL,
 	}
+}
+
+func (h *Handler) buildFullURL(r *http.Request, shortID string) (string, error) {
+	if h.baseURL != "" {
+		return url.JoinPath(h.baseURL, shortID)
+	}
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	base := scheme + "://" + r.Host
+	return url.JoinPath(base, shortID)
 }
 
 func (h *Handler) ShortenURL(w http.ResponseWriter, r *http.Request) {
@@ -52,29 +73,53 @@ func (h *Handler) ShortenURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var fullURL string
-	if h.baseURL != "" {
-		fullURL, err = url.JoinPath(h.baseURL, shortURL.ShortURL)
-		if err != nil {
-			http.Error(w, "Failed to build short URL", http.StatusInternalServerError)
-			return
-		}
-	} else {
-		scheme := "http"
-		if r.TLS != nil {
-			scheme = "https"
-		}
-		base := scheme + "://" + r.Host
-		fullURL, err = url.JoinPath(base, shortURL.ShortURL)
-		if err != nil {
-			http.Error(w, "Failed to build short URL", http.StatusInternalServerError)
-			return
-		}
+	fullURL, err := h.buildFullURL(r, shortURL.ShortURL)
+	if err != nil {
+		http.Error(w, "Failed to build short URL", http.StatusInternalServerError)
+		return
 	}
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte(fullURL))
+}
+
+func (h *Handler) ShortenURLJSON(w http.ResponseWriter, r *http.Request) {
+	var req shortenRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	originalURL := strings.TrimSpace(req.URL)
+	if originalURL == "" {
+		http.Error(w, "url is required", http.StatusBadRequest)
+		return
+	}
+
+	parsedURL, err := validation.ParseHTTPURL(originalURL)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	normalizedURL := parsedURL.String()
+
+	shortURL, err := h.service.ShortenURL(r.Context(), normalizedURL)
+	if err != nil {
+		log.Printf("shorten url failed: %v", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	fullURL, err := h.buildFullURL(r, shortURL.ShortURL)
+	if err != nil {
+		http.Error(w, "Failed to build short URL", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(shortenResponse{Result: fullURL})
 }
 
 func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
@@ -103,6 +148,7 @@ func (h *Handler) Router() chi.Router {
 	r := chi.NewRouter()
 
 	r.Post("/", h.ShortenURL)
+	r.Post("/api/shorten", h.ShortenURLJSON)
 
 	r.Get("/{id}", h.Redirect)
 
