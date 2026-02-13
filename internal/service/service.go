@@ -33,7 +33,7 @@ func NewService(repo Repository, opts ...Option) *Service {
 func (s *Service) ShortenURL(ctx context.Context, originalURL string) (*model.URL, error) {
 	existingURL, err := s.repo.GetByOriginalURL(ctx, originalURL)
 	if err == nil {
-		return existingURL, nil
+		return existingURL, repository.ErrAlreadyExists
 	}
 	if err != repository.ErrNotFound {
 		return nil, fmt.Errorf("failed to check existing URL: %w", err)
@@ -59,11 +59,13 @@ func (s *Service) ShortenURL(ctx context.Context, originalURL string) (*model.UR
 			if !errors.Is(err, repository.ErrAlreadyExists) {
 				return nil, fmt.Errorf("failed to create URL: %w", err)
 			}
-
-			if existingURL, getErr := s.repo.GetByOriginalURL(ctx, originalURL); getErr == nil {
-				return existingURL, nil
+			existingURL, getErr := s.repo.GetByOriginalURL(ctx, originalURL)
+			if getErr == nil {
+				return existingURL, repository.ErrAlreadyExists
 			}
-
+			if getErr != repository.ErrNotFound {
+				return nil, fmt.Errorf("failed to get existing URL after conflict: %w", getErr)
+			}
 			continue
 		}
 

@@ -69,6 +69,17 @@ func (h *Handler) ShortenURL(w http.ResponseWriter, r *http.Request) {
 
 	shortURL, err := h.service.ShortenURL(r.Context(), normalizedURL)
 	if err != nil {
+		if errors.Is(err, repository.ErrAlreadyExists) {
+			fullURL, buildErr := h.buildFullURL(r, shortURL.ShortURL)
+			if buildErr != nil {
+				http.Error(w, "Failed to build short URL", http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "text/plain")
+			w.WriteHeader(http.StatusConflict)
+			w.Write([]byte(fullURL))
+			return
+		}
 		log.Printf("shorten url failed: %v", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
@@ -107,6 +118,17 @@ func (h *Handler) ShortenURLJSON(w http.ResponseWriter, r *http.Request) {
 
 	shortURL, err := h.service.ShortenURL(r.Context(), normalizedURL)
 	if err != nil {
+		if errors.Is(err, repository.ErrAlreadyExists) {
+			fullURL, buildErr := h.buildFullURL(r, shortURL.ShortURL)
+			if buildErr != nil {
+				http.Error(w, "Failed to build short URL", http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			_ = json.NewEncoder(w).Encode(shortenResponse{Result: fullURL})
+			return
+		}
 		log.Printf("shorten url failed: %v", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return

@@ -76,6 +76,13 @@ func TestHandler_ShortenURL(t *testing.T) {
 			expectedStatus: http.StatusCreated,
 			expectedBody:   "http://localhost/existing123",
 		},
+		{
+			name:           "already exists returns 409 with existing short URL",
+			method:         http.MethodPost,
+			body:           "https://example.com",
+			expectedStatus: http.StatusConflict,
+			expectedBody:   "http://localhost/existing123",
+		},
 	}
 
 	for _, tt := range tests {
@@ -99,6 +106,10 @@ func TestHandler_ShortenURL(t *testing.T) {
 				svc.EXPECT().
 					ShortenURL(gomock.Any(), "https://example.com").
 					Return(&model.URL{OriginalURL: "https://example.com", ShortURL: "existing123", CreatedAt: time.Now()}, nil)
+			case "already exists returns 409 with existing short URL":
+				svc.EXPECT().
+					ShortenURL(gomock.Any(), "https://example.com").
+					Return(&model.URL{OriginalURL: "https://example.com", ShortURL: "existing123", CreatedAt: time.Now()}, repository.ErrAlreadyExists)
 			default:
 			}
 
@@ -121,7 +132,7 @@ func TestHandler_ShortenURL(t *testing.T) {
 				}
 			}
 
-			if tt.expectedStatus == http.StatusCreated {
+			if tt.expectedStatus == http.StatusCreated || tt.expectedStatus == http.StatusConflict {
 				if w.Header().Get("Content-Type") != "text/plain" {
 					t.Errorf("expected Content-Type text/plain, got %s", w.Header().Get("Content-Type"))
 				}
@@ -253,6 +264,19 @@ func TestHandler_ShortenURLJSON(t *testing.T) {
 				s.EXPECT().
 					ShortenURL(gomock.Any(), "https://example.com").
 					Return(nil, errors.New("service failure"))
+			},
+		},
+		{
+			name:           "already exists returns 409 with existing short URL",
+			body:           `{"url":"https://practicum.yandex.ru"}`,
+			baseURL:        "http://localhost:8080",
+			expectedStatus: http.StatusConflict,
+			expectedBody:   `{"result":"http://localhost:8080/EwHXdJfB"}`,
+			expectJSON:     true,
+			setupMock: func(s *mocks.MockURLService) {
+				s.EXPECT().
+					ShortenURL(gomock.Any(), "https://practicum.yandex.ru").
+					Return(&model.URL{OriginalURL: "https://practicum.yandex.ru", ShortURL: "EwHXdJfB", CreatedAt: time.Now()}, repository.ErrAlreadyExists)
 			},
 		},
 	}

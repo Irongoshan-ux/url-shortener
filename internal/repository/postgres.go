@@ -8,10 +8,9 @@ import (
 	"time"
 
 	"github.com/Irongoshan-ux/url-shortener/internal/model"
+	"github.com/jackc/pgerrcode"
 	"github.com/lib/pq"
 )
-
-const pqErrCodeUniqueViolation = "23505" // PostgreSQL SQLSTATE: unique_violation
 
 type PostgresRepository struct {
 	db *sql.DB
@@ -96,7 +95,7 @@ func (r *PostgresRepository) GetByOriginalURL(ctx context.Context, originalURL s
 func isUniqueViolation(err error) bool {
 	var e *pq.Error
 	if errors.As(err, &e) {
-		return e.Code == pqErrCodeUniqueViolation
+		return e.Code == pgerrcode.UniqueViolation
 	}
 	return false
 }
