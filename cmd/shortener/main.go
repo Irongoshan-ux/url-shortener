@@ -1,7 +1,10 @@
 package main
 
 import (
+	"database/sql"
 	"os"
+
+	_ "github.com/lib/pq"
 
 	"github.com/Irongoshan-ux/url-shortener/internal/app"
 	"github.com/Irongoshan-ux/url-shortener/internal/config"
@@ -22,8 +25,18 @@ func main() {
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Failed to create repository")
 	}
+
+	var db *sql.DB
+	if cfg.DatabaseDSN != "" {
+		db, err = sql.Open("postgres", cfg.DatabaseDSN)
+		if err != nil {
+			logger.Fatal().Err(err).Msg("Failed to open database")
+		}
+		defer db.Close()
+	}
+
 	svc := service.NewService(repo)
-	httpHandler, err := app.NewHTTPHandler(cfg, svc)
+	httpHandler, err := app.NewHTTPHandler(cfg, svc, db)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Failed to initialize HTTP handler")
 	}

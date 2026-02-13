@@ -1,6 +1,7 @@
 package app
 
 import (
+	"database/sql"
 	"net/http"
 	"os"
 
@@ -13,7 +14,21 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func NewHTTPHandler(cfg *config.Config, svc *service.Service) (http.Handler, error) {
+func PingHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if db == nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		if err := db.PingContext(r.Context()); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}
+}
+
+func NewHTTPHandler(cfg *config.Config, svc *service.Service, db *sql.DB) (http.Handler, error) {
 	baseURL, err := validation.NormalizeBaseURL(cfg.BaseURL)
 	if err != nil {
 		return nil, err
@@ -24,6 +39,8 @@ func NewHTTPHandler(cfg *config.Config, svc *service.Service) (http.Handler, err
 	r.Use(GzipMiddleware)
 	r.Use(LoggingMiddleware(log))
 	r.Use(middleware.Recoverer)
+
+	r.Get("/ping", PingHandler(db))
 
 	h := handler.NewHandler(svc, baseURL)
 	r.Mount("/", h.Router())
