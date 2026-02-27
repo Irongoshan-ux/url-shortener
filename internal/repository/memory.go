@@ -25,6 +25,9 @@ func (r *MemoryRepository) Create(ctx context.Context, url *model.URL) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	if list := r.urlsByOriginal[url.OriginalURL]; len(list) > 0 {
+		return ErrConflict
+	}
 	if _, exists := r.urlsByShort[url.ShortURL]; exists {
 		return fmt.Errorf("short id %q already exists: %w", url.ShortURL, ErrAlreadyExists)
 	}
@@ -39,6 +42,9 @@ func (r *MemoryRepository) CreateBatch(ctx context.Context, urls []*model.URL) e
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, u := range urls {
+		if list := r.urlsByOriginal[u.OriginalURL]; len(list) > 0 {
+			return ErrConflict
+		}
 		if _, exists := r.urlsByShort[u.ShortURL]; exists {
 			return fmt.Errorf("short id %q already exists: %w", u.ShortURL, ErrAlreadyExists)
 		}

@@ -37,8 +37,8 @@ func (r *PostgresRepository) Create(ctx context.Context, url *model.URL) error {
 	}
 	_, err = r.pool.Exec(ctx, sqlStr, args...)
 	if err != nil {
-		if isUniqueViolation(err) {
-			return ErrAlreadyExists
+		if errConflict := uniqueViolationError(err); errConflict != nil {
+			return errConflict
 		}
 		return fmt.Errorf("insert url: %w", err)
 	}
@@ -64,8 +64,8 @@ func (r *PostgresRepository) CreateBatch(ctx context.Context, urls []*model.URL)
 		}
 		_, err = tx.Exec(ctx, sqlStr, args...)
 		if err != nil {
-			if isUniqueViolation(err) {
-				return ErrAlreadyExists
+			if errConflict := uniqueViolationError(err); errConflict != nil {
+				return errConflict
 			}
 			return fmt.Errorf("insert url: %w", err)
 		}
@@ -109,10 +109,15 @@ func (r *PostgresRepository) GetByOriginalURL(ctx context.Context, originalURL s
 	return &u, nil
 }
 
-func isUniqueViolation(err error) bool {
+const pgConstraintUniqueOriginalURL = "urls_original_url_key"
+
+func uniqueViolationError(err error) error {
 	var e *pgconn.PgError
-	if errors.As(err, &e) {
-		return e.Code == pgerrcode.UniqueViolation
+	if !errors.As(err, &e) || e.Code != pgerrcode.UniqueViolation {
+		return nil
 	}
-	return false
+	if e.ConstraintName == pgConstraintUniqueOriginalURL {
+		return ErrConflict
+	}
+	return ErrAlreadyExists
 }

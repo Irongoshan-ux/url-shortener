@@ -12,6 +12,8 @@ import (
 	"github.com/Irongoshan-ux/url-shortener/internal/repository"
 )
 
+var ErrConflict = errors.New("url already shortened")
+
 type Service struct {
 	repo Repository
 	maxAttempts int
@@ -48,6 +50,13 @@ func (s *Service) ShortenURL(ctx context.Context, originalURL string) (*model.UR
 		}
 
 		if err := s.repo.Create(ctx, url); err != nil {
+			if errors.Is(err, repository.ErrConflict) {
+				existing, getErr := s.repo.GetByOriginalURL(ctx, originalURL)
+				if getErr != nil {
+					return nil, fmt.Errorf("get existing URL: %w", getErr)
+				}
+				return existing, ErrConflict
+			}
 			if !errors.Is(err, repository.ErrAlreadyExists) {
 				return nil, fmt.Errorf("failed to create URL: %w", err)
 			}

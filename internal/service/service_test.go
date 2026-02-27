@@ -11,23 +11,18 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func TestShortenURL_SameOriginalURL_CreatesNewEachTime(t *testing.T) {
+func TestShortenURL_SameOriginalURL_SecondReturnsConflict(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
 	repo := mocks.NewMockRepository(ctrl)
 
-	ids := []string{"id1", "id2"}
-	genCalls := 0
-	idGen := func() (string, error) {
-		genCalls++
-		return ids[genCalls-1], nil
-	}
-
+	idGen := func() (string, error) { return "id1", nil }
 	svc := NewService(repo, WithIDGenerator(idGen))
 
 	ctx := context.Background()
 	orig := "https://example.com"
+	existingURL := &model.URL{OriginalURL: orig, ShortURL: "id1"}
 
 	gomock.InOrder(
 		repo.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, u *model.URL) error {
@@ -37,11 +32,12 @@ func TestShortenURL_SameOriginalURL_CreatesNewEachTime(t *testing.T) {
 			return nil
 		}),
 		repo.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, u *model.URL) error {
-			if u.OriginalURL != orig || u.ShortURL != "id2" {
+			if u.OriginalURL != orig || u.ShortURL != "id1" {
 				t.Fatalf("unexpected url: %+v", u)
 			}
-			return nil
+			return repository.ErrConflict
 		}),
+		repo.EXPECT().GetByOriginalURL(gomock.Any(), orig).Return(existingURL, nil),
 	)
 
 	u1, err := svc.ShortenURL(ctx, orig)
@@ -53,15 +49,11 @@ func TestShortenURL_SameOriginalURL_CreatesNewEachTime(t *testing.T) {
 	}
 
 	u2, err := svc.ShortenURL(ctx, orig)
-	if err != nil {
-		t.Fatalf("second shorten failed: %v", err)
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("second shorten expected ErrConflict, got err=%v", err)
 	}
-	if u2.ShortURL != "id2" {
-		t.Fatalf("expected short id %q, got %q", "id2", u2.ShortURL)
-	}
-
-	if genCalls != 2 {
-		t.Fatalf("expected id generator called twice, got %d", genCalls)
+	if u2 == nil || u2.ShortURL != "id1" {
+		t.Fatalf("expected existing short id %q, got %v", "id1", u2)
 	}
 }
 
@@ -103,7 +95,7 @@ func TestShortenURL_RetriesOnShortIDCollision_UntilSuccess(t *testing.T) {
 		}),
 	)
 
-	u, err := svc.ShortenURL(context.Background(), "https://b.example")
+	u, err := svc.ShortenURL(context.Background(), orig)
 	if err != nil {
 		t.Fatalf("shorten failed: %v", err)
 	}

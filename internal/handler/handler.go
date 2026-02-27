@@ -71,6 +71,13 @@ func (h *Handler) ShortenURL(w http.ResponseWriter, r *http.Request) {
 
 	shortURL, err := h.service.ShortenURL(r.Context(), normalizedURL)
 	if err != nil {
+		if errors.Is(err, service.ErrConflict) && shortURL != nil {
+			fullURL, _ := h.buildFullURL(r, shortURL.ShortURL)
+			w.Header().Set("Content-Type", "text/plain")
+			w.WriteHeader(http.StatusConflict)
+			w.Write([]byte(fullURL))
+			return
+		}
 		h.log.Info().Err(err).Msg("shorten url failed")
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
@@ -109,6 +116,13 @@ func (h *Handler) ShortenURLJSON(w http.ResponseWriter, r *http.Request) {
 
 	shortURL, err := h.service.ShortenURL(r.Context(), normalizedURL)
 	if err != nil {
+		if errors.Is(err, service.ErrConflict) && shortURL != nil {
+			fullURL, _ := h.buildFullURL(r, shortURL.ShortURL)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(shortenResponse{Result: fullURL})
+			return
+		}
 		h.log.Info().Err(err).Msg("shorten url failed")
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
