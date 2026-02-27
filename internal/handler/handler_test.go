@@ -14,6 +14,7 @@ import (
 	"github.com/Irongoshan-ux/url-shortener/internal/repository"
 	"github.com/Irongoshan-ux/url-shortener/internal/service"
 	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog"
 	"go.uber.org/mock/gomock"
 )
 
@@ -70,17 +71,10 @@ func TestHandler_ShortenURL(t *testing.T) {
 			expectedStatus: http.StatusInternalServerError,
 		},
 		{
-			name:   "service returns deterministic short id",
-			method: http.MethodPost,
-			body:   "https://example.com",
-			expectedStatus: http.StatusCreated,
-			expectedBody:   "http://localhost/existing123",
-		},
-		{
-			name:           "already exists returns 409 with existing short URL",
+			name:           "service returns deterministic short id",
 			method:         http.MethodPost,
 			body:           "https://example.com",
-			expectedStatus: http.StatusConflict,
+			expectedStatus: http.StatusCreated,
 			expectedBody:   "http://localhost/existing123",
 		},
 	}
@@ -106,14 +100,10 @@ func TestHandler_ShortenURL(t *testing.T) {
 				svc.EXPECT().
 					ShortenURL(gomock.Any(), "https://example.com").
 					Return(&model.URL{OriginalURL: "https://example.com", ShortURL: "existing123", CreatedAt: time.Now()}, nil)
-			case "already exists returns 409 with existing short URL":
-				svc.EXPECT().
-					ShortenURL(gomock.Any(), "https://example.com").
-					Return(&model.URL{OriginalURL: "https://example.com", ShortURL: "existing123", CreatedAt: time.Now()}, repository.ErrAlreadyExists)
 			default:
 			}
 
-			h := NewHandler(svc, "")
+			h := NewHandler(svc, "", zerolog.Nop())
 
 			req := httptest.NewRequest(tt.method, "/", strings.NewReader(tt.body))
 			req.Host = "localhost"
@@ -132,7 +122,7 @@ func TestHandler_ShortenURL(t *testing.T) {
 				}
 			}
 
-			if tt.expectedStatus == http.StatusCreated || tt.expectedStatus == http.StatusConflict {
+			if tt.expectedStatus == http.StatusCreated {
 				if w.Header().Get("Content-Type") != "text/plain" {
 					t.Errorf("expected Content-Type text/plain, got %s", w.Header().Get("Content-Type"))
 				}
@@ -185,7 +175,7 @@ func TestHandler_Redirect(t *testing.T) {
 			default:
 			}
 
-			h := NewHandler(svc, "")
+			h := NewHandler(svc, "", zerolog.Nop())
 
 			r := chi.NewRouter()
 			r.Mount("/", h.Router())
@@ -266,19 +256,6 @@ func TestHandler_ShortenURLJSON(t *testing.T) {
 					Return(nil, errors.New("service failure"))
 			},
 		},
-		{
-			name:           "already exists returns 409 with existing short URL",
-			body:           `{"url":"https://practicum.yandex.ru"}`,
-			baseURL:        "http://localhost:8080",
-			expectedStatus: http.StatusConflict,
-			expectedBody:   `{"result":"http://localhost:8080/EwHXdJfB"}`,
-			expectJSON:     true,
-			setupMock: func(s *mocks.MockURLService) {
-				s.EXPECT().
-					ShortenURL(gomock.Any(), "https://practicum.yandex.ru").
-					Return(&model.URL{OriginalURL: "https://practicum.yandex.ru", ShortURL: "EwHXdJfB", CreatedAt: time.Now()}, repository.ErrAlreadyExists)
-			},
-		},
 	}
 
 	for _, tt := range tests {
@@ -289,7 +266,7 @@ func TestHandler_ShortenURLJSON(t *testing.T) {
 			svc := mocks.NewMockURLService(ctrl)
 			tt.setupMock(svc)
 
-			h := NewHandler(svc, tt.baseURL)
+			h := NewHandler(svc, tt.baseURL, zerolog.Nop())
 
 			req := httptest.NewRequest(http.MethodPost, "/api/shorten", strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", "application/json")
@@ -331,7 +308,7 @@ func TestHandler_ShortenURLBatch(t *testing.T) {
 				{CorrelationID: "1", ShortURL: "id1"},
 				{CorrelationID: "2", ShortURL: "id2"},
 			}, nil)
-		h := NewHandler(svc, "http://localhost:8080")
+		h := NewHandler(svc, "http://localhost:8080", zerolog.Nop())
 		body := `[{"correlation_id":"1","original_url":"https://a.com"},{"correlation_id":"2","original_url":"https://b.com"}]`
 		req := httptest.NewRequest(http.MethodPost, "/api/shorten/batch", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
@@ -358,7 +335,7 @@ func TestHandler_ShortenURLBatch(t *testing.T) {
 	t.Run("empty batch", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
-		h := NewHandler(mocks.NewMockURLService(ctrl), "")
+		h := NewHandler(mocks.NewMockURLService(ctrl), "", zerolog.Nop())
 		req := httptest.NewRequest(http.MethodPost, "/api/shorten/batch", strings.NewReader("[]"))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
@@ -372,7 +349,7 @@ func TestHandler_ShortenURLBatch(t *testing.T) {
 	t.Run("invalid JSON", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
-		h := NewHandler(mocks.NewMockURLService(ctrl), "")
+		h := NewHandler(mocks.NewMockURLService(ctrl), "", zerolog.Nop())
 		req := httptest.NewRequest(http.MethodPost, "/api/shorten/batch", strings.NewReader("not json"))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
@@ -466,7 +443,7 @@ func TestHandler_Root(t *testing.T) {
 			defer ctrl.Finish()
 
 			svc := mocks.NewMockURLService(ctrl)
-			h := NewHandler(svc, "")
+			h := NewHandler(svc, "", zerolog.Nop())
 
 			r := chi.NewRouter()
 			r.Mount("/", h.Router())

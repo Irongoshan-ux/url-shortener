@@ -90,9 +90,6 @@ func (f *FileRepository) Create(ctx context.Context, url *model.URL) error {
 }
 
 func (f *FileRepository) CreateBatch(ctx context.Context, urls []*model.URL) error {
-	if len(urls) == 0 {
-		return nil
-	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if err := f.mem.CreateBatch(ctx, urls); err != nil {

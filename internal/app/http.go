@@ -1,7 +1,6 @@
 package app
 
 import (
-	"database/sql"
 	"net/http"
 	"os"
 
@@ -11,16 +10,17 @@ import (
 	"github.com/Irongoshan-ux/url-shortener/internal/handler"
 	"github.com/Irongoshan-ux/url-shortener/internal/service"
 	"github.com/Irongoshan-ux/url-shortener/internal/validation"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
 )
 
-func PingHandler(db *sql.DB) http.HandlerFunc {
+func PingHandler(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if db == nil {
+		if pool == nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		if err := db.PingContext(r.Context()); err != nil {
+		if err := pool.Ping(r.Context()); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -28,7 +28,7 @@ func PingHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-func NewHTTPHandler(cfg *config.Config, svc *service.Service, db *sql.DB) (http.Handler, error) {
+func NewHTTPHandler(cfg *config.Config, svc *service.Service, pool *pgxpool.Pool) (http.Handler, error) {
 	baseURL, err := validation.NormalizeBaseURL(cfg.BaseURL)
 	if err != nil {
 		return nil, err
@@ -40,9 +40,9 @@ func NewHTTPHandler(cfg *config.Config, svc *service.Service, db *sql.DB) (http.
 	r.Use(LoggingMiddleware(log))
 	r.Use(middleware.Recoverer)
 
-	r.Get("/ping", PingHandler(db))
+	r.Get("/ping", PingHandler(pool))
 
-	h := handler.NewHandler(svc, baseURL)
+	h := handler.NewHandler(svc, baseURL, log)
 	r.Mount("/", h.Router())
 
 	return r, nil

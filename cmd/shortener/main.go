@@ -1,7 +1,7 @@
 package main
 
 import (
-	"database/sql"
+	"context"
 	"os"
 	"path/filepath"
 
@@ -9,6 +9,7 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	_ "github.com/lib/pq"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/Irongoshan-ux/url-shortener/internal/app"
 	"github.com/Irongoshan-ux/url-shortener/internal/config"
@@ -38,7 +39,7 @@ func main() {
 	}
 
 	var repo service.Repository
-	var db *sql.DB
+	var pool *pgxpool.Pool
 
 	if cfg.DatabaseDSN != "" {
 		migrationsPath := "migrations"
@@ -48,12 +49,12 @@ func main() {
 		if err := runMigrations(cfg.DatabaseDSN, migrationsPath); err != nil {
 			logger.Fatal().Err(err).Msg("Failed to run migrations")
 		}
-		db, err = sql.Open("postgres", cfg.DatabaseDSN)
+		pool, err = pgxpool.New(context.Background(), cfg.DatabaseDSN)
 		if err != nil {
-			logger.Fatal().Err(err).Msg("Failed to open database")
+			logger.Fatal().Err(err).Msg("Failed to create connection pool")
 		}
-		defer db.Close()
-		repo = repository.NewPostgresRepository(db)
+		defer pool.Close()
+		repo = repository.NewPostgresRepository(pool)
 	} else if cfg.FileStoragePath != "" {
 		repo, err = repository.NewFileRepository(cfg.FileStoragePath)
 		if err != nil {
@@ -64,7 +65,7 @@ func main() {
 	}
 
 	svc := service.NewService(repo)
-	httpHandler, err := app.NewHTTPHandler(cfg, svc, db)
+	httpHandler, err := app.NewHTTPHandler(cfg, svc, pool)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Failed to initialize HTTP handler")
 	}
