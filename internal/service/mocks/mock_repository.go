@@ -55,6 +55,20 @@ func (mr *MockRepositoryMockRecorder) Create(ctx, url any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockRepository)(nil).Create), ctx, url)
 }
 
+// CreateBatch mocks base method.
+func (m *MockRepository) CreateBatch(ctx context.Context, urls []*model.URL) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateBatch", ctx, urls)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateBatch indicates an expected call of CreateBatch.
+func (mr *MockRepositoryMockRecorder) CreateBatch(ctx, urls any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateBatch", reflect.TypeOf((*MockRepository)(nil).CreateBatch), ctx, urls)
+}
+
 // GetByOriginalURL mocks base method.
 func (m *MockRepository) GetByOriginalURL(ctx context.Context, originalURL string) (*model.URL, error) {
 	m.ctrl.T.Helper()

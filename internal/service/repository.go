@@ -8,6 +8,7 @@ import (
 
 type Repository interface {
 	Create(ctx context.Context, url *model.URL) error
+	CreateBatch(ctx context.Context, urls []*model.URL) error
 	GetByShortURL(ctx context.Context, shortURL string) (*model.URL, error)
 	GetByOriginalURL(ctx context.Context, originalURL string) (*model.URL, error)
 }

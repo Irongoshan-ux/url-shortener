@@ -39,6 +39,27 @@ func (r *MemoryRepository) Create(ctx context.Context, url *model.URL) error {
 	return nil
 }
 
+func (r *MemoryRepository) CreateBatch(ctx context.Context, urls []*model.URL) error {
+	if len(urls) == 0 {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, u := range urls {
+		if _, exists := r.urlsByShort[u.ShortURL]; exists {
+			return fmt.Errorf("short id %q already exists: %w", u.ShortURL, ErrAlreadyExists)
+		}
+		if _, exists := r.urlsByOriginal[u.OriginalURL]; exists {
+			return fmt.Errorf("original url %q already in batch: %w", u.OriginalURL, ErrAlreadyExists)
+		}
+	}
+	for _, u := range urls {
+		r.urlsByShort[u.ShortURL] = u
+		r.urlsByOriginal[u.OriginalURL] = u
+	}
+	return nil
+}
+
 func (r *MemoryRepository) GetByShortURL(ctx context.Context, shortURL string) (*model.URL, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

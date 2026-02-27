@@ -51,8 +51,8 @@ func TestShortenURL_SameOriginalURL_ReturnsExisting_NoRetries(t *testing.T) {
 	}
 
 	u2, err := svc.ShortenURL(ctx, orig)
-	if err != nil {
-		t.Fatalf("second shorten failed: %v", err)
+	if !errors.Is(err, repository.ErrAlreadyExists) {
+		t.Fatalf("second shorten expected ErrAlreadyExists, got: %v", err)
 	}
 	if u2.ShortURL != "id1" {
 		t.Fatalf("expected existing short id %q, got %q", "id1", u2.ShortURL)
@@ -80,22 +80,22 @@ func TestShortenURL_RetriesOnShortIDCollision_UntilSuccess(t *testing.T) {
 
 	orig := "https://b.example"
 
-	// initial check + after each collision (2 times) => 3 ErrNotFound
-	repo.EXPECT().GetByOriginalURL(gomock.Any(), orig).Return(nil, repository.ErrNotFound).Times(3)
-
 	gomock.InOrder(
+		repo.EXPECT().GetByOriginalURL(gomock.Any(), orig).Return(nil, repository.ErrNotFound),
 		repo.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, u *model.URL) error {
 			if u.OriginalURL != orig || u.ShortURL != "dup" {
 				t.Fatalf("unexpected url on attempt1: %+v", u)
 			}
 			return repository.ErrAlreadyExists
 		}),
+		repo.EXPECT().GetByOriginalURL(gomock.Any(), orig).Return(nil, repository.ErrNotFound),
 		repo.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, u *model.URL) error {
 			if u.OriginalURL != orig || u.ShortURL != "dup" {
 				t.Fatalf("unexpected url on attempt2: %+v", u)
 			}
 			return repository.ErrAlreadyExists
 		}),
+		repo.EXPECT().GetByOriginalURL(gomock.Any(), orig).Return(nil, repository.ErrNotFound),
 		repo.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, u *model.URL) error {
 			if u.OriginalURL != orig || u.ShortURL != "ok" {
 				t.Fatalf("unexpected url on attempt3: %+v", u)
@@ -132,20 +132,23 @@ func TestShortenURL_MaxAttemptsExceeded_OnPersistentCollision(t *testing.T) {
 
 	orig := "https://b.example"
 
-	// initial check + after each collision (2 times) => 3 ErrNotFound
-	repo.EXPECT().GetByOriginalURL(gomock.Any(), orig).Return(nil, repository.ErrNotFound).Times(3)
-	repo.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, u *model.URL) error {
-		if u.OriginalURL != orig || u.ShortURL != "dup" {
-			t.Fatalf("unexpected url on attempt1: %+v", u)
-		}
-		return repository.ErrAlreadyExists
-	}).Times(1)
-	repo.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, u *model.URL) error {
-		if u.OriginalURL != orig || u.ShortURL != "dup" {
-			t.Fatalf("unexpected url on attempt2: %+v", u)
-		}
-		return repository.ErrAlreadyExists
-	}).Times(1)
+	gomock.InOrder(
+		repo.EXPECT().GetByOriginalURL(gomock.Any(), orig).Return(nil, repository.ErrNotFound),
+		repo.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, u *model.URL) error {
+			if u.OriginalURL != orig || u.ShortURL != "dup" {
+				t.Fatalf("unexpected url on attempt1: %+v", u)
+			}
+			return repository.ErrAlreadyExists
+		}),
+		repo.EXPECT().GetByOriginalURL(gomock.Any(), orig).Return(nil, repository.ErrNotFound),
+		repo.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, u *model.URL) error {
+			if u.OriginalURL != orig || u.ShortURL != "dup" {
+				t.Fatalf("unexpected url on attempt2: %+v", u)
+			}
+			return repository.ErrAlreadyExists
+		}),
+		repo.EXPECT().GetByOriginalURL(gomock.Any(), orig).Return(nil, repository.ErrNotFound),
+	)
 
 	_, err := svc.ShortenURL(context.Background(), "https://b.example")
 	if err == nil {
