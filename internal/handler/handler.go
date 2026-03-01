@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/Irongoshan-ux/url-shortener/internal/auth"
 	"github.com/Irongoshan-ux/url-shortener/internal/repository"
 	"github.com/Irongoshan-ux/url-shortener/internal/service"
 	"github.com/Irongoshan-ux/url-shortener/internal/validation"
@@ -68,8 +69,9 @@ func (h *Handler) ShortenURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	normalizedURL := parsedURL.String()
+	userID, _ := auth.UserIDFromContext(r.Context())
 
-	shortURL, err := h.service.ShortenURL(r.Context(), normalizedURL)
+	shortURL, err := h.service.ShortenURL(r.Context(), normalizedURL, userID)
 	if err != nil {
 		if errors.Is(err, service.ErrConflict) && shortURL != nil {
 			fullURL, _ := h.buildFullURL(r, shortURL.ShortURL)
@@ -113,8 +115,9 @@ func (h *Handler) ShortenURLJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	normalizedURL := parsedURL.String()
+	userID, _ := auth.UserIDFromContext(r.Context())
 
-	shortURL, err := h.service.ShortenURL(r.Context(), normalizedURL)
+	shortURL, err := h.service.ShortenURL(r.Context(), normalizedURL, userID)
 	if err != nil {
 		if errors.Is(err, service.ErrConflict) && shortURL != nil {
 			fullURL, _ := h.buildFullURL(r, shortURL.ShortURL)
@@ -175,7 +178,8 @@ func (h *Handler) ShortenURLBatch(w http.ResponseWriter, r *http.Request) {
 		items = append(items, service.BatchItem{CorrelationID: x.CorrelationID, OriginalURL: parsedURL.String()})
 	}
 
-	results, err := h.service.ShortenURLBatch(r.Context(), items)
+	userID, _ := auth.UserIDFromContext(r.Context())
+	results, err := h.service.ShortenURLBatch(r.Context(), items, userID)
 	if err != nil {
 		h.log.Info().Err(err).Msg("shorten url batch failed")
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -219,12 +223,48 @@ func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, originalURL, http.StatusTemporaryRedirect)
 }
 
+type userURLItem struct {
+	ShortURL    string `json:"short_url"`
+	OriginalURL string `json:"original_url"`
+}
+
+func (h *Handler) GetUserURLs(w http.ResponseWriter, r *http.Request) {
+	if !auth.HadValidCookieFromContext(r.Context()) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok || userID == "" {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	urls, err := h.service.GetUserURLs(r.Context(), userID)
+	if err != nil {
+		h.log.Info().Err(err).Msg("get user urls failed")
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	if len(urls) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	resp := make([]userURLItem, len(urls))
+	for i, u := range urls {
+		fullShort, _ := h.buildFullURL(r, u.ShortURL)
+		resp[i] = userURLItem{ShortURL: fullShort, OriginalURL: u.OriginalURL}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
 func (h *Handler) Router() chi.Router {
 	r := chi.NewRouter()
 
 	r.Post("/", h.ShortenURL)
 	r.Post("/api/shorten", h.ShortenURLJSON)
 	r.Post("/api/shorten/batch", h.ShortenURLBatch)
+	r.Get("/api/user/urls", h.GetUserURLs)
 
 	r.Get("/{id}", h.Redirect)
 

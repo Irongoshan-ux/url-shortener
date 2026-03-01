@@ -32,7 +32,7 @@ func NewService(repo Repository, opts ...Option) *Service {
 	return s
 }
 
-func (s *Service) ShortenURL(ctx context.Context, originalURL string) (*model.URL, error) {
+func (s *Service) ShortenURL(ctx context.Context, originalURL string, userID string) (*model.URL, error) {
 	for attempt := 0; attempt < s.maxAttempts; attempt++ {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -47,6 +47,7 @@ func (s *Service) ShortenURL(ctx context.Context, originalURL string) (*model.UR
 			OriginalURL: originalURL,
 			ShortURL:    shortID,
 			CreatedAt:   time.Now(),
+			UserID:      userID,
 		}
 
 		if err := s.repo.Create(ctx, url); err != nil {
@@ -88,7 +89,7 @@ type BatchResult struct {
 	ShortURL      string
 }
 
-func (s *Service) ShortenURLBatch(ctx context.Context, items []BatchItem) ([]BatchResult, error) {
+func (s *Service) ShortenURLBatch(ctx context.Context, items []BatchItem, userID string) ([]BatchResult, error) {
 	if len(items) == 0 {
 		return nil, nil
 	}
@@ -123,6 +124,7 @@ func (s *Service) ShortenURLBatch(ctx context.Context, items []BatchItem) ([]Bat
 				OriginalURL: origURL,
 				ShortURL:    shortID,
 				CreatedAt:   time.Now(),
+				UserID:      userID,
 			})
 		}
 		if err := s.repo.CreateBatch(ctx, urlsToCreate); err != nil {
@@ -136,6 +138,10 @@ func (s *Service) ShortenURLBatch(ctx context.Context, items []BatchItem) ([]Bat
 	}
 
 	return results, nil
+}
+
+func (s *Service) GetUserURLs(ctx context.Context, userID string) ([]*model.URL, error) {
+	return s.repo.GetByUserID(ctx, userID)
 }
 
 func (s *Service) generateShortID() (string, error) {

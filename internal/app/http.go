@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/Irongoshan-ux/url-shortener/internal/auth"
 	"github.com/Irongoshan-ux/url-shortener/internal/config"
 	"github.com/Irongoshan-ux/url-shortener/internal/handler"
 	"github.com/Irongoshan-ux/url-shortener/internal/service"
@@ -39,6 +40,7 @@ func NewHTTPHandler(cfg *config.Config, svc *service.Service, pool *pgxpool.Pool
 	r.Use(GzipMiddleware)
 	r.Use(LoggingMiddleware(log))
 	r.Use(middleware.Recoverer)
+	r.Use(auth.CookieMiddleware(cfg.CookieSecret))
 
 	r.Get("/ping", PingHandler(pool))
 

@@ -40,7 +40,7 @@ func TestShortenURL_SameOriginalURL_SecondReturnsConflict(t *testing.T) {
 		repo.EXPECT().GetByOriginalURL(gomock.Any(), orig).Return(existingURL, nil),
 	)
 
-	u1, err := svc.ShortenURL(ctx, orig)
+	u1, err := svc.ShortenURL(ctx, orig, "")
 	if err != nil {
 		t.Fatalf("first shorten failed: %v", err)
 	}
@@ -48,7 +48,7 @@ func TestShortenURL_SameOriginalURL_SecondReturnsConflict(t *testing.T) {
 		t.Fatalf("expected short id %q, got %q", "id1", u1.ShortURL)
 	}
 
-	u2, err := svc.ShortenURL(ctx, orig)
+	u2, err := svc.ShortenURL(ctx, orig, "")
 	if !errors.Is(err, ErrConflict) {
 		t.Fatalf("second shorten expected ErrConflict, got err=%v", err)
 	}
@@ -95,7 +95,7 @@ func TestShortenURL_RetriesOnShortIDCollision_UntilSuccess(t *testing.T) {
 		}),
 	)
 
-	u, err := svc.ShortenURL(context.Background(), orig)
+	u, err := svc.ShortenURL(context.Background(), orig, "")
 	if err != nil {
 		t.Fatalf("shorten failed: %v", err)
 	}
@@ -138,7 +138,7 @@ func TestShortenURL_MaxAttemptsExceeded_OnPersistentCollision(t *testing.T) {
 		}),
 	)
 
-	_, err := svc.ShortenURL(context.Background(), "https://b.example")
+	_, err := svc.ShortenURL(context.Background(), "https://b.example", "")
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}

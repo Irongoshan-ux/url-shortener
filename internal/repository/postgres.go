@@ -29,8 +29,8 @@ func (r *PostgresRepository) Create(ctx context.Context, url *model.URL) error {
 	if createdAt.IsZero() {
 		createdAt = time.Now()
 	}
-	q := psql.Insert("urls").Columns("short_url", "original_url", "created_at").
-		Values(url.ShortURL, url.OriginalURL, createdAt)
+	q := psql.Insert("urls").Columns("short_url", "original_url", "created_at", "user_id").
+		Values(url.ShortURL, url.OriginalURL, createdAt, url.UserID)
 	sqlStr, args, err := q.ToSql()
 	if err != nil {
 		return fmt.Errorf("build insert: %w", err)
@@ -56,8 +56,8 @@ func (r *PostgresRepository) CreateBatch(ctx context.Context, urls []*model.URL)
 		if createdAt.IsZero() {
 			createdAt = time.Now()
 		}
-		q := psql.Insert("urls").Columns("short_url", "original_url", "created_at").
-			Values(u.ShortURL, u.OriginalURL, createdAt)
+		q := psql.Insert("urls").Columns("short_url", "original_url", "created_at", "user_id").
+			Values(u.ShortURL, u.OriginalURL, createdAt, u.UserID)
 		sqlStr, args, err := q.ToSql()
 		if err != nil {
 			return fmt.Errorf("build insert: %w", err)
@@ -74,14 +74,14 @@ func (r *PostgresRepository) CreateBatch(ctx context.Context, urls []*model.URL)
 }
 
 func (r *PostgresRepository) GetByShortURL(ctx context.Context, shortURL string) (*model.URL, error) {
-	q := psql.Select("short_url", "original_url", "created_at").
+	q := psql.Select("short_url", "original_url", "created_at", "user_id").
 		From("urls").Where(squirrel.Eq{"short_url": shortURL})
 	sqlStr, args, err := q.ToSql()
 	if err != nil {
 		return nil, fmt.Errorf("build select: %w", err)
 	}
 	var u model.URL
-	err = r.pool.QueryRow(ctx, sqlStr, args...).Scan(&u.ShortURL, &u.OriginalURL, &u.CreatedAt)
+	err = r.pool.QueryRow(ctx, sqlStr, args...).Scan(&u.ShortURL, &u.OriginalURL, &u.CreatedAt, &u.UserID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound
@@ -92,14 +92,14 @@ func (r *PostgresRepository) GetByShortURL(ctx context.Context, shortURL string)
 }
 
 func (r *PostgresRepository) GetByOriginalURL(ctx context.Context, originalURL string) (*model.URL, error) {
-	q := psql.Select("short_url", "original_url", "created_at").
+	q := psql.Select("short_url", "original_url", "created_at", "user_id").
 		From("urls").Where(squirrel.Eq{"original_url": originalURL})
 	sqlStr, args, err := q.ToSql()
 	if err != nil {
 		return nil, fmt.Errorf("build select: %w", err)
 	}
 	var u model.URL
-	err = r.pool.QueryRow(ctx, sqlStr, args...).Scan(&u.ShortURL, &u.OriginalURL, &u.CreatedAt)
+	err = r.pool.QueryRow(ctx, sqlStr, args...).Scan(&u.ShortURL, &u.OriginalURL, &u.CreatedAt, &u.UserID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound
@@ -107,6 +107,29 @@ func (r *PostgresRepository) GetByOriginalURL(ctx context.Context, originalURL s
 		return nil, fmt.Errorf("get by original url: %w", err)
 	}
 	return &u, nil
+}
+
+func (r *PostgresRepository) GetByUserID(ctx context.Context, userID string) ([]*model.URL, error) {
+	q := psql.Select("short_url", "original_url", "created_at", "user_id").
+		From("urls").Where(squirrel.Eq{"user_id": userID})
+	sqlStr, args, err := q.ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("build select: %w", err)
+	}
+	rows, err := r.pool.Query(ctx, sqlStr, args...)
+	if err != nil {
+		return nil, fmt.Errorf("get by user id: %w", err)
+	}
+	defer rows.Close()
+	var list []*model.URL
+	for rows.Next() {
+		var u model.URL
+		if err := rows.Scan(&u.ShortURL, &u.OriginalURL, &u.CreatedAt, &u.UserID); err != nil {
+			return nil, fmt.Errorf("scan: %w", err)
+		}
+		list = append(list, &u)
+	}
+	return list, rows.Err()
 }
 
 const pgConstraintUniqueOriginalURL = "urls_original_url_key"

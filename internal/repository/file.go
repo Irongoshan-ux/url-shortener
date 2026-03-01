@@ -15,6 +15,7 @@ type fileRecord struct {
 	UUID        uuid.UUID `json:"uuid"`
 	ShortURL    string    `json:"short_url"`
 	OriginalURL string    `json:"original_url"`
+	UserID      string    `json:"user_id"`
 }
 
 type FileRepository struct {
@@ -51,6 +52,7 @@ func (f *FileRepository) load() error {
 		url := &model.URL{
 			OriginalURL: r.OriginalURL,
 			ShortURL:    r.ShortURL,
+			UserID:      r.UserID,
 		}
 		_ = f.mem.Create(context.Background(), url)
 	}
@@ -68,6 +70,7 @@ func (f *FileRepository) save() error {
 			UUID:        uuid.New(),
 			ShortURL:    u.ShortURL,
 			OriginalURL: u.OriginalURL,
+			UserID:      u.UserID,
 		})
 	}
 	f.mem.mu.RUnlock()
@@ -104,4 +107,8 @@ func (f *FileRepository) GetByShortURL(ctx context.Context, shortURL string) (*m
 
 func (f *FileRepository) GetByOriginalURL(ctx context.Context, originalURL string) (*model.URL, error) {
 	return f.mem.GetByOriginalURL(ctx, originalURL)
+}
+
+func (f *FileRepository) GetByUserID(ctx context.Context, userID string) ([]*model.URL, error) {
+	return f.mem.GetByUserID(ctx, userID)
 }

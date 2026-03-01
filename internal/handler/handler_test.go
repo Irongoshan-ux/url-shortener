@@ -90,15 +90,15 @@ func TestHandler_ShortenURL(t *testing.T) {
 			switch tt.name {
 			case "successful shorten":
 				svc.EXPECT().
-					ShortenURL(gomock.Any(), "https://example.com").
+					ShortenURL(gomock.Any(), "https://example.com", gomock.Any()).
 					Return(&model.URL{OriginalURL: "https://example.com", ShortURL: "abc123", CreatedAt: time.Now()}, nil)
 			case "service error":
 				svc.EXPECT().
-					ShortenURL(gomock.Any(), "https://example.com").
+					ShortenURL(gomock.Any(), "https://example.com", gomock.Any()).
 					Return(nil, errors.New("service failure"))
 			case "service returns deterministic short id":
 				svc.EXPECT().
-					ShortenURL(gomock.Any(), "https://example.com").
+					ShortenURL(gomock.Any(), "https://example.com", gomock.Any()).
 					Return(&model.URL{OriginalURL: "https://example.com", ShortURL: "existing123", CreatedAt: time.Now()}, nil)
 			default:
 			}
@@ -218,7 +218,7 @@ func TestHandler_ShortenURLJSON(t *testing.T) {
 			expectJSON:     true,
 			setupMock: func(s *mocks.MockURLService) {
 				s.EXPECT().
-					ShortenURL(gomock.Any(), "https://practicum.yandex.ru").
+					ShortenURL(gomock.Any(), "https://practicum.yandex.ru", gomock.Any()).
 					Return(&model.URL{OriginalURL: "https://practicum.yandex.ru", ShortURL: "EwHXdJfB", CreatedAt: time.Now()}, nil)
 			},
 		},
@@ -252,7 +252,7 @@ func TestHandler_ShortenURLJSON(t *testing.T) {
 			expectedStatus: http.StatusInternalServerError,
 			setupMock: func(s *mocks.MockURLService) {
 				s.EXPECT().
-					ShortenURL(gomock.Any(), "https://example.com").
+					ShortenURL(gomock.Any(), "https://example.com", gomock.Any()).
 					Return(nil, errors.New("service failure"))
 			},
 		},
@@ -303,7 +303,7 @@ func TestHandler_ShortenURLBatch(t *testing.T) {
 			ShortenURLBatch(gomock.Any(), gomock.Cond(func(items any) bool {
 				list, ok := items.([]service.BatchItem)
 				return ok && len(list) == 2 && list[0].CorrelationID == "1" && list[1].CorrelationID == "2"
-			})).
+			}), gomock.Any()).
 			Return([]service.BatchResult{
 				{CorrelationID: "1", ShortURL: "id1"},
 				{CorrelationID: "2", ShortURL: "id2"},
@@ -454,9 +454,9 @@ func TestHandler_Root(t *testing.T) {
 			case "GET /{id} - should redirect":
 				svc.EXPECT().GetOriginalURL(gomock.Any(), "abc123").Return("https://example.com", nil)
 			case "POST / - should shorten":
-				svc.EXPECT().ShortenURL(gomock.Any(), "https://example.com").Return(&model.URL{OriginalURL: "https://example.com", ShortURL: "abc123", CreatedAt: time.Now()}, nil)
+				svc.EXPECT().ShortenURL(gomock.Any(), "https://example.com", gomock.Any()).Return(&model.URL{OriginalURL: "https://example.com", ShortURL: "abc123", CreatedAt: time.Now()}, nil)
 			case "POST /api/shorten - should shorten":
-				svc.EXPECT().ShortenURL(gomock.Any(), "https://example.com").Return(&model.URL{OriginalURL: "https://example.com", ShortURL: "abc123", CreatedAt: time.Now()}, nil)
+				svc.EXPECT().ShortenURL(gomock.Any(), "https://example.com", gomock.Any()).Return(&model.URL{OriginalURL: "https://example.com", ShortURL: "abc123", CreatedAt: time.Now()}, nil)
 			default:
 			}
 

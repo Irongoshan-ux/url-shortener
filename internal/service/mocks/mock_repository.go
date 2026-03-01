@@ -98,3 +98,18 @@ func (mr *MockRepositoryMockRecorder) GetByShortURL(ctx, shortURL any) *gomock.C
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByShortURL", reflect.TypeOf((*MockRepository)(nil).GetByShortURL), ctx, shortURL)
 }
+
+// GetByUserID mocks base method.
+func (m *MockRepository) GetByUserID(ctx context.Context, userID string) ([]*model.URL, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetByUserID", ctx, userID)
+	ret0, _ := ret[0].([]*model.URL)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetByUserID indicates an expected call of GetByUserID.
+func (mr *MockRepositoryMockRecorder) GetByUserID(ctx, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByUserID", reflect.TypeOf((*MockRepository)(nil).GetByUserID), ctx, userID)
+}

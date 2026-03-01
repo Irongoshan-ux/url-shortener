@@ -12,12 +12,14 @@ type MemoryRepository struct {
 	mu             sync.RWMutex
 	urlsByShort    map[string]*model.URL
 	urlsByOriginal map[string][]*model.URL
+	urlsByUser     map[string][]*model.URL
 }
 
 func NewMemoryRepository() *MemoryRepository {
 	return &MemoryRepository{
 		urlsByShort:    make(map[string]*model.URL),
 		urlsByOriginal: make(map[string][]*model.URL),
+		urlsByUser:     make(map[string][]*model.URL),
 	}
 }
 
@@ -34,6 +36,9 @@ func (r *MemoryRepository) Create(ctx context.Context, url *model.URL) error {
 
 	r.urlsByShort[url.ShortURL] = url
 	r.urlsByOriginal[url.OriginalURL] = append(r.urlsByOriginal[url.OriginalURL], url)
+	if url.UserID != "" {
+		r.urlsByUser[url.UserID] = append(r.urlsByUser[url.UserID], url)
+	}
 
 	return nil
 }
@@ -52,6 +57,9 @@ func (r *MemoryRepository) CreateBatch(ctx context.Context, urls []*model.URL) e
 	for _, u := range urls {
 		r.urlsByShort[u.ShortURL] = u
 		r.urlsByOriginal[u.OriginalURL] = append(r.urlsByOriginal[u.OriginalURL], u)
+		if u.UserID != "" {
+			r.urlsByUser[u.UserID] = append(r.urlsByUser[u.UserID], u)
+		}
 	}
 	return nil
 }
@@ -77,4 +85,17 @@ func (r *MemoryRepository) GetByOriginalURL(ctx context.Context, originalURL str
 		return nil, ErrNotFound
 	}
 	return list[0], nil
+}
+
+func (r *MemoryRepository) GetByUserID(ctx context.Context, userID string) ([]*model.URL, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	list := r.urlsByUser[userID]
+	if len(list) == 0 {
+		return nil, nil
+	}
+	out := make([]*model.URL, len(list))
+	copy(out, list)
+	return out, nil
 }
