@@ -27,8 +27,10 @@ func (r *MemoryRepository) Create(ctx context.Context, url *model.URL) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if list := r.urlsByOriginal[url.OriginalURL]; len(list) > 0 {
-		return ErrConflict
+	for _, u := range r.urlsByOriginal[url.OriginalURL] {
+		if !u.IsDeleted {
+			return ErrConflict
+		}
 	}
 	if _, exists := r.urlsByShort[url.ShortURL]; exists {
 		return fmt.Errorf("short id %q already exists: %w", url.ShortURL, ErrAlreadyExists)
@@ -47,8 +49,10 @@ func (r *MemoryRepository) CreateBatch(ctx context.Context, urls []*model.URL) e
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, u := range urls {
-		if list := r.urlsByOriginal[u.OriginalURL]; len(list) > 0 {
-			return ErrConflict
+		for _, existing := range r.urlsByOriginal[u.OriginalURL] {
+			if !existing.IsDeleted {
+				return ErrConflict
+			}
 		}
 		if _, exists := r.urlsByShort[u.ShortURL]; exists {
 			return fmt.Errorf("short id %q already exists: %w", u.ShortURL, ErrAlreadyExists)
@@ -81,10 +85,12 @@ func (r *MemoryRepository) GetByOriginalURL(ctx context.Context, originalURL str
 	defer r.mu.RUnlock()
 
 	list := r.urlsByOriginal[originalURL]
-	if len(list) == 0 {
-		return nil, ErrNotFound
+	for _, u := range list {
+		if !u.IsDeleted {
+			return u, nil
+		}
 	}
-	return list[0], nil
+	return nil, ErrNotFound
 }
 
 func (r *MemoryRepository) GetByUserID(ctx context.Context, userID string) ([]*model.URL, error) {
@@ -95,7 +101,27 @@ func (r *MemoryRepository) GetByUserID(ctx context.Context, userID string) ([]*m
 	if len(list) == 0 {
 		return nil, nil
 	}
-	out := make([]*model.URL, len(list))
-	copy(out, list)
+	var out []*model.URL
+	for _, u := range list {
+		if !u.IsDeleted {
+			out = append(out, u)
+		}
+	}
 	return out, nil
+}
+
+func (r *MemoryRepository) DeleteByShortURLs(ctx context.Context, userID string, shortIDs []string) error {
+	if len(shortIDs) == 0 {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for _, id := range shortIDs {
+		u, exists := r.urlsByShort[id]
+		if exists && u.UserID == userID {
+			u.IsDeleted = true
+		}
+	}
+	return nil
 }

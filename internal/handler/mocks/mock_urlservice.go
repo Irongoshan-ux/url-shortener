@@ -42,6 +42,18 @@ func (m *MockURLService) EXPECT() *MockURLServiceMockRecorder {
 	return m.recorder
 }
 
+// DeleteUserURLs mocks base method.
+func (m *MockURLService) DeleteUserURLs(ctx context.Context, userID string, shortIDs []string) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "DeleteUserURLs", ctx, userID, shortIDs)
+}
+
+// DeleteUserURLs indicates an expected call of DeleteUserURLs.
+func (mr *MockURLServiceMockRecorder) DeleteUserURLs(ctx, userID, shortIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteUserURLs", reflect.TypeOf((*MockURLService)(nil).DeleteUserURLs), ctx, userID, shortIDs)
+}
+
 // GetOriginalURL mocks base method.
 func (m *MockURLService) GetOriginalURL(ctx context.Context, shortID string) (string, error) {
 	m.ctrl.T.Helper()
@@ -55,6 +67,21 @@ func (m *MockURLService) GetOriginalURL(ctx context.Context, shortID string) (st
 func (mr *MockURLServiceMockRecorder) GetOriginalURL(ctx, shortID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetOriginalURL", reflect.TypeOf((*MockURLService)(nil).GetOriginalURL), ctx, shortID)
+}
+
+// GetURLByShortID mocks base method.
+func (m *MockURLService) GetURLByShortID(ctx context.Context, shortID string) (*model.URL, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetURLByShortID", ctx, shortID)
+	ret0, _ := ret[0].(*model.URL)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetURLByShortID indicates an expected call of GetURLByShortID.
+func (mr *MockURLServiceMockRecorder) GetURLByShortID(ctx, shortID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetURLByShortID", reflect.TypeOf((*MockURLService)(nil).GetURLByShortID), ctx, shortID)
 }
 
 // GetUserURLs mocks base method.

@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/Irongoshan-ux/url-shortener/internal/model"
@@ -14,22 +15,84 @@ import (
 
 var ErrConflict = errors.New("url already shortened")
 
+const deleteWorkerBatchDelay = 100 * time.Millisecond
+const deleteWorkerMaxBatch = 100
+
+type deleteJob struct {
+	userID   string
+	shortIDs []string
+}
+
 type Service struct {
-	repo Repository
-	maxAttempts int
-	idGen       func() (string, error)
+	repo         Repository
+	maxAttempts  int
+	idGen        func() (string, error)
+	deleteCh     chan deleteJob
+	deleteWorker sync.Once
 }
 
 func NewService(repo Repository, opts ...Option) *Service {
 	s := &Service{
 		repo:        repo,
 		maxAttempts: 10,
+		deleteCh:    make(chan deleteJob, 1024),
 	}
 	s.idGen = s.generateShortID
 	for _, opt := range opts {
 		opt(s)
 	}
+	s.startDeleteWorker()
 	return s
+}
+
+func (s *Service) startDeleteWorker() {
+	s.deleteWorker.Do(func() {
+		go s.runDeleteWorker()
+	})
+}
+
+func (s *Service) runDeleteWorker() {
+	ticker := time.NewTicker(deleteWorkerBatchDelay)
+	defer ticker.Stop()
+	var batch []deleteJob
+	flush := func() {
+		if len(batch) == 0 {
+			return
+		}
+		byUser := make(map[string]map[string]bool)
+		for _, j := range batch {
+			if byUser[j.userID] == nil {
+				byUser[j.userID] = make(map[string]bool)
+			}
+			for _, id := range j.shortIDs {
+				byUser[j.userID][id] = true
+			}
+		}
+		ctx := context.Background()
+		for userID, idsSet := range byUser {
+			shortIDs := make([]string, 0, len(idsSet))
+			for id := range idsSet {
+				shortIDs = append(shortIDs, id)
+			}
+			_ = s.repo.DeleteByShortURLs(ctx, userID, shortIDs)
+		}
+		batch = batch[:0]
+	}
+	for {
+		select {
+		case j, ok := <-s.deleteCh:
+			if !ok {
+				flush()
+				return
+			}
+			batch = append(batch, j)
+			if len(batch) >= deleteWorkerMaxBatch {
+				flush()
+			}
+		case <-ticker.C:
+			flush()
+		}
+	}
 }
 
 func (s *Service) ShortenURL(ctx context.Context, originalURL string, userID string) (*model.URL, error) {
@@ -54,6 +117,9 @@ func (s *Service) ShortenURL(ctx context.Context, originalURL string, userID str
 			if errors.Is(err, repository.ErrConflict) {
 				existing, getErr := s.repo.GetByOriginalURL(ctx, originalURL)
 				if getErr != nil {
+					if errors.Is(getErr, repository.ErrNotFound) {
+						continue
+					}
 					return nil, fmt.Errorf("get existing URL: %w", getErr)
 				}
 				return existing, ErrConflict
@@ -75,8 +141,21 @@ func (s *Service) GetOriginalURL(ctx context.Context, shortID string) (string, e
 	if err != nil {
 		return "", fmt.Errorf("failed to get URL: %w", err)
 	}
-
 	return url.OriginalURL, nil
+}
+
+func (s *Service) GetURLByShortID(ctx context.Context, shortID string) (*model.URL, error) {
+	return s.repo.GetByShortURL(ctx, shortID)
+}
+
+func (s *Service) DeleteUserURLs(ctx context.Context, userID string, shortIDs []string) {
+	if len(shortIDs) == 0 {
+		return
+	}
+	select {
+	case s.deleteCh <- deleteJob{userID: userID, shortIDs: shortIDs}:
+	default:
+	}
 }
 
 type BatchItem struct {

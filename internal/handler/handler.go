@@ -208,19 +208,22 @@ func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	originalURL, err := h.service.GetOriginalURL(r.Context(), shortID)
+	url, err := h.service.GetURLByShortID(r.Context(), shortID)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			http.Error(w, "URL not found", http.StatusBadRequest)
+			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-
 		h.log.Info().Err(err).Msg("get original url failed")
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
+	if url.IsDeleted {
+		w.WriteHeader(http.StatusGone)
+		return
+	}
 
-	http.Redirect(w, r, originalURL, http.StatusTemporaryRedirect)
+	http.Redirect(w, r, url.OriginalURL, http.StatusTemporaryRedirect)
 }
 
 type userURLItem struct {
@@ -258,6 +261,25 @@ func (h *Handler) GetUserURLs(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
+func (h *Handler) DeleteUserURLs(w http.ResponseWriter, r *http.Request) {
+	if !auth.HadValidCookieFromContext(r.Context()) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok || userID == "" {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	var shortIDs []string
+	if err := json.NewDecoder(r.Body).Decode(&shortIDs); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+	h.service.DeleteUserURLs(r.Context(), userID, shortIDs)
+	w.WriteHeader(http.StatusAccepted)
+}
+
 func (h *Handler) Router() chi.Router {
 	r := chi.NewRouter()
 
@@ -265,6 +287,7 @@ func (h *Handler) Router() chi.Router {
 	r.Post("/api/shorten", h.ShortenURLJSON)
 	r.Post("/api/shorten/batch", h.ShortenURLBatch)
 	r.Get("/api/user/urls", h.GetUserURLs)
+	r.Delete("/api/user/urls", h.DeleteUserURLs)
 
 	r.Get("/{id}", h.Redirect)
 

@@ -147,10 +147,11 @@ func TestHandler_Redirect(t *testing.T) {
 			expectedLocation: "https://example.com",
 		},
 		{
-			name:   "URL not found",
-			method: http.MethodGet,
-			path:   "nonexistent",
-			expectedStatus: http.StatusBadRequest,
+			name:             "URL not found",
+			method:           http.MethodGet,
+			path:             "nonexistent",
+			expectedStatus:   http.StatusNotFound,
+			expectedLocation: "",
 		},
 		{
 			name:   "wrong method",
@@ -169,9 +170,9 @@ func TestHandler_Redirect(t *testing.T) {
 
 			switch tt.name {
 			case "successful redirect":
-				svc.EXPECT().GetOriginalURL(gomock.Any(), "abc123").Return("https://example.com", nil)
+				svc.EXPECT().GetURLByShortID(gomock.Any(), "abc123").Return(&model.URL{OriginalURL: "https://example.com", ShortURL: "abc123", IsDeleted: false}, nil)
 			case "URL not found":
-				svc.EXPECT().GetOriginalURL(gomock.Any(), "nonexistent").Return("", repository.ErrNotFound)
+				svc.EXPECT().GetURLByShortID(gomock.Any(), "nonexistent").Return((*model.URL)(nil), repository.ErrNotFound)
 			default:
 			}
 
@@ -377,15 +378,15 @@ func TestHandler_Root(t *testing.T) {
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:   "GET /smth - should return error",
-			method: http.MethodGet,
-			path:   "smth",
-			expectedStatus: http.StatusBadRequest,
+			name:           "GET /smth - should return error",
+			method:         http.MethodGet,
+			path:           "smth",
+			expectedStatus: http.StatusNotFound,
 		},
 		{
-			name:   "GET /smth/else - should return error",
-			method: http.MethodGet,
-			path:   "smth/else",
+			name:           "GET /smth/else - should return error",
+			method:         http.MethodGet,
+			path:           "smth/else",
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
@@ -450,9 +451,9 @@ func TestHandler_Root(t *testing.T) {
 
 			switch tt.name {
 			case "GET /smth - should return error":
-				svc.EXPECT().GetOriginalURL(gomock.Any(), "smth").Return("", repository.ErrNotFound)
+				svc.EXPECT().GetURLByShortID(gomock.Any(), "smth").Return((*model.URL)(nil), repository.ErrNotFound)
 			case "GET /{id} - should redirect":
-				svc.EXPECT().GetOriginalURL(gomock.Any(), "abc123").Return("https://example.com", nil)
+				svc.EXPECT().GetURLByShortID(gomock.Any(), "abc123").Return(&model.URL{OriginalURL: "https://example.com", ShortURL: "abc123", IsDeleted: false}, nil)
 			case "POST / - should shorten":
 				svc.EXPECT().ShortenURL(gomock.Any(), "https://example.com", gomock.Any()).Return(&model.URL{OriginalURL: "https://example.com", ShortURL: "abc123", CreatedAt: time.Now()}, nil)
 			case "POST /api/shorten - should shorten":

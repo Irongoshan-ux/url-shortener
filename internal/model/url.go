@@ -7,4 +7,5 @@ type URL struct {
 	ShortURL    string    `json:"short_url"`
 	CreatedAt   time.Time `json:"created_at"`
 	UserID      string    `json:"-"`
+	IsDeleted   bool      `json:"-"`
 }

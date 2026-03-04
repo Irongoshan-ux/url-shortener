@@ -13,7 +13,9 @@ type URLService interface {
 	ShortenURL(ctx context.Context, originalURL string, userID string) (*model.URL, error)
 	ShortenURLBatch(ctx context.Context, items []service.BatchItem, userID string) ([]service.BatchResult, error)
 	GetOriginalURL(ctx context.Context, shortID string) (string, error)
+	GetURLByShortID(ctx context.Context, shortID string) (*model.URL, error)
 	GetUserURLs(ctx context.Context, userID string) ([]*model.URL, error)
+	DeleteUserURLs(ctx context.Context, userID string, shortIDs []string)
 }
 
 

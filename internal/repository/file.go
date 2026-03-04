@@ -16,6 +16,7 @@ type fileRecord struct {
 	ShortURL    string    `json:"short_url"`
 	OriginalURL string    `json:"original_url"`
 	UserID      string    `json:"user_id"`
+	IsDeleted   bool      `json:"is_deleted"`
 }
 
 type FileRepository struct {
@@ -53,6 +54,7 @@ func (f *FileRepository) load() error {
 			OriginalURL: r.OriginalURL,
 			ShortURL:    r.ShortURL,
 			UserID:      r.UserID,
+			IsDeleted:   r.IsDeleted,
 		}
 		_ = f.mem.Create(context.Background(), url)
 	}
@@ -71,6 +73,7 @@ func (f *FileRepository) save() error {
 			ShortURL:    u.ShortURL,
 			OriginalURL: u.OriginalURL,
 			UserID:      u.UserID,
+			IsDeleted:   u.IsDeleted,
 		})
 	}
 	f.mem.mu.RUnlock()
@@ -111,4 +114,14 @@ func (f *FileRepository) GetByOriginalURL(ctx context.Context, originalURL strin
 
 func (f *FileRepository) GetByUserID(ctx context.Context, userID string) ([]*model.URL, error) {
 	return f.mem.GetByUserID(ctx, userID)
+}
+
+func (f *FileRepository) DeleteByShortURLs(ctx context.Context, userID string, shortIDs []string) error {
+	if err := f.mem.DeleteByShortURLs(ctx, userID, shortIDs); err != nil {
+		return err
+	}
+	f.mu.Lock()
+	err := f.save()
+	f.mu.Unlock()
+	return err
 }
