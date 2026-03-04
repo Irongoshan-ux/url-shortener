@@ -56,9 +56,9 @@ func GenerateUserID() string {
 	return uuid.New().String()
 }
 
-func GetOrCreateUserID(r *http.Request, secret string) (userID string, hadValidCookie bool, setCookie *http.Cookie) {
+func GetOrCreateUserID(r *http.Request, secret string) (userID string, hadValidCookie bool, hadCookieInRequest bool, setCookie *http.Cookie) {
 	cookie, err := r.Cookie(CookieName)
-	if err != nil || cookie.Value == "" {
+	if err != nil || cookie == nil || cookie.Value == "" {
 		userID = GenerateUserID()
 		signed := SignUserID(secret, userID)
 		setCookie = &http.Cookie{
@@ -69,7 +69,7 @@ func GetOrCreateUserID(r *http.Request, secret string) (userID string, hadValidC
 			HttpOnly: true,
 			SameSite: http.SameSiteLaxMode,
 		}
-		return userID, false, setCookie
+		return userID, false, false, setCookie
 	}
 	userID, err = VerifyAndGetUserID(secret, cookie.Value)
 	if err != nil {
@@ -83,7 +83,7 @@ func GetOrCreateUserID(r *http.Request, secret string) (userID string, hadValidC
 			HttpOnly: true,
 			SameSite: http.SameSiteLaxMode,
 		}
-		return userID, false, setCookie
+		return userID, false, true, setCookie
 	}
-	return userID, true, nil
+	return userID, true, true, nil
 }

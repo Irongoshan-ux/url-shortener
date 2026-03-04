@@ -233,12 +233,16 @@ type userURLItem struct {
 
 func (h *Handler) GetUserURLs(w http.ResponseWriter, r *http.Request) {
 	if !auth.HadValidCookieFromContext(r.Context()) {
-		w.WriteHeader(http.StatusUnauthorized)
+		if auth.HadCookieInRequestFromContext(r.Context()) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	userID, ok := auth.UserIDFromContext(r.Context())
 	if !ok || userID == "" {
-		w.WriteHeader(http.StatusUnauthorized)
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	urls, err := h.service.GetUserURLs(r.Context(), userID)
