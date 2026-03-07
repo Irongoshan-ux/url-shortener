@@ -17,6 +17,7 @@ var ErrConflict = errors.New("url already shortened")
 
 const deleteWorkerBatchDelay = 100 * time.Millisecond
 const deleteWorkerMaxBatch = 100
+const deleteWriterSemSize = 100
 
 type deleteJob struct {
 	userID   string
@@ -28,14 +29,16 @@ type Service struct {
 	maxAttempts  int
 	idGen        func() (string, error)
 	deleteCh     chan deleteJob
+	deleteSem    chan struct{} // limits concurrent goroutines sending to deleteCh
 	deleteWorker sync.Once
 }
 
 func NewService(repo Repository, opts ...Option) *Service {
 	s := &Service{
-		repo:        repo,
+		repo:      repo,
 		maxAttempts: 10,
-		deleteCh:    make(chan deleteJob, 1024),
+		deleteCh:  make(chan deleteJob, 1024),
+		deleteSem: make(chan struct{}, deleteWriterSemSize),
 	}
 	s.idGen = s.generateShortID
 	for _, opt := range opts {
@@ -152,10 +155,12 @@ func (s *Service) DeleteUserURLs(ctx context.Context, userID string, shortIDs []
 	if len(shortIDs) == 0 {
 		return
 	}
-	select {
-	case s.deleteCh <- deleteJob{userID: userID, shortIDs: shortIDs}:
-	default:
-	}
+	job := deleteJob{userID: userID, shortIDs: shortIDs}
+	go func() {
+		s.deleteSem <- struct{}{}
+		defer func() { <-s.deleteSem }()
+		s.deleteCh <- job
+	}()
 }
 
 type BatchItem struct {

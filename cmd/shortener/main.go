@@ -31,6 +31,7 @@ func runMigrations(dsn string, migrationsPath string) error {
 }
 
 func main() {
+	ctx := context.Background()
 	logger := zerolog.New(os.Stdout).With().Timestamp().Logger()
 
 	cfg, err := config.Load()
@@ -49,23 +50,26 @@ func main() {
 		if err := runMigrations(cfg.DatabaseDSN, migrationsPath); err != nil {
 			logger.Fatal().Err(err).Msg("Failed to run migrations")
 		}
-		pool, err = pgxpool.New(context.Background(), cfg.DatabaseDSN)
+		pool, err = pgxpool.New(ctx, cfg.DatabaseDSN)
 		if err != nil {
 			logger.Fatal().Err(err).Msg("Failed to create connection pool")
 		}
 		defer pool.Close()
 		repo = repository.NewPostgresRepository(pool)
+		logger.Info().Str("storage", "postgres").Msg("Using PostgreSQL storage")
 	} else if cfg.FileStoragePath != "" {
 		repo, err = repository.NewFileRepository(cfg.FileStoragePath)
 		if err != nil {
 			logger.Fatal().Err(err).Msg("Failed to create file repository")
 		}
+		logger.Info().Str("storage", "file").Str("path", cfg.FileStoragePath).Msg("Using file storage")
 	} else {
 		repo = repository.NewMemoryRepository()
+		logger.Info().Str("storage", "memory").Msg("Using in-memory storage")
 	}
 
 	svc := service.NewService(repo)
-	httpHandler, err := app.NewHTTPHandler(cfg, svc, pool)
+	httpHandler, err := app.NewHTTPHandler(ctx, cfg, svc, pool, logger)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Failed to initialize HTTP handler")
 	}

@@ -1,55 +1,65 @@
 package auth
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/base64"
 	"errors"
 	"net/http"
-	"strings"
+	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
 
 const CookieName = "user_id"
 
+const cookieMaxAge = 3600 * 24 * 30 // 30 days
+
 var ErrInvalidCookie = errors.New("invalid cookie")
 
-func SignUserID(secret, userID string) string {
-	if secret == "" {
-		secret = "default-secret"
-	}
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(userID))
-	sig := base64.URLEncoding.EncodeToString(mac.Sum(nil))
-	id := base64.URLEncoding.EncodeToString([]byte(userID))
-	return id + "." + sig
+type claims struct {
+	jwt.RegisteredClaims
+	UserID string `json:"uid"`
 }
 
-func VerifyAndGetUserID(secret, cookieValue string) (string, error) {
-	if secret == "" {
-		secret = "default-secret"
+func makeCookie(secret, userID string) (*http.Cookie, error) {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(cookieMaxAge) * time.Second)),
+		},
+		UserID: userID,
+	})
+	signed, err := token.SignedString(secretBytes(secret))
+	if err != nil {
+		return nil, err
 	}
-	parts := strings.SplitN(cookieValue, ".", 2)
-	if len(parts) != 2 {
-		return "", ErrInvalidCookie
+	return &http.Cookie{
+		Name:     CookieName,
+		Value:    signed,
+		Path:     "/",
+		MaxAge:   cookieMaxAge,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	}, nil
+}
+
+func secretBytes(s string) []byte {
+	if s == "" {
+		return []byte("default-secret")
 	}
-	idEnc, sigEnc := parts[0], parts[1]
-	idBytes, err := base64.URLEncoding.DecodeString(idEnc)
+	return []byte(s)
+}
+
+func verifyAndGetUserID(secret, cookieValue string) (string, error) {
+	token, err := jwt.ParseWithClaims(cookieValue, &claims{}, func(_ *jwt.Token) (interface{}, error) {
+		return secretBytes(secret), nil
+	})
 	if err != nil {
 		return "", ErrInvalidCookie
 	}
-	userID := string(idBytes)
-	if userID == "" {
+	c, ok := token.Claims.(*claims)
+	if !ok || !token.Valid || c.UserID == "" {
 		return "", ErrInvalidCookie
 	}
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(userID))
-	expected := base64.URLEncoding.EncodeToString(mac.Sum(nil))
-	if !hmac.Equal([]byte(sigEnc), []byte(expected)) {
-		return "", ErrInvalidCookie
-	}
-	return userID, nil
+	return c.UserID, nil
 }
 
 func GenerateUserID() string {
@@ -60,30 +70,20 @@ func GetOrCreateUserID(r *http.Request, secret string) (userID string, hadValidC
 	cookie, err := r.Cookie(CookieName)
 	if err != nil || cookie == nil || cookie.Value == "" {
 		userID = GenerateUserID()
-		signed := SignUserID(secret, userID)
-		setCookie = &http.Cookie{
-			Name:  CookieName,
-			Value: signed,
-			Path:  "/",
-			MaxAge: 3600 * 24 * 365,
-			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
+		c, err := makeCookie(secret, userID)
+		if err != nil {
+			return userID, false, false, nil
 		}
-		return userID, false, false, setCookie
+		return userID, false, false, c
 	}
-	userID, err = VerifyAndGetUserID(secret, cookie.Value)
+	userID, err = verifyAndGetUserID(secret, cookie.Value)
 	if err != nil {
 		userID = GenerateUserID()
-		signed := SignUserID(secret, userID)
-		setCookie = &http.Cookie{
-			Name:  CookieName,
-			Value: signed,
-			Path:  "/",
-			MaxAge: 3600 * 24 * 365,
-			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
+		c, err := makeCookie(secret, userID)
+		if err != nil {
+			return userID, false, true, nil
 		}
-		return userID, false, true, setCookie
+		return userID, false, true, c
 	}
 	return userID, true, true, nil
 }

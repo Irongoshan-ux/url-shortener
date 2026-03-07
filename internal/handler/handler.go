@@ -69,7 +69,12 @@ func (h *Handler) ShortenURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	normalizedURL := parsedURL.String()
-	userID, _ := auth.UserIDFromContext(r.Context())
+	userID, err := auth.UserIDFromContext(r.Context())
+	if err != nil {
+		h.log.Error().Err(err).Msg("user id not in context")
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
 
 	shortURL, err := h.service.ShortenURL(r.Context(), normalizedURL, userID)
 	if err != nil {
@@ -115,7 +120,12 @@ func (h *Handler) ShortenURLJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	normalizedURL := parsedURL.String()
-	userID, _ := auth.UserIDFromContext(r.Context())
+	userID, err := auth.UserIDFromContext(r.Context())
+	if err != nil {
+		h.log.Error().Err(err).Msg("user id not in context")
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
 
 	shortURL, err := h.service.ShortenURL(r.Context(), normalizedURL, userID)
 	if err != nil {
@@ -178,7 +188,12 @@ func (h *Handler) ShortenURLBatch(w http.ResponseWriter, r *http.Request) {
 		items = append(items, service.BatchItem{CorrelationID: x.CorrelationID, OriginalURL: parsedURL.String()})
 	}
 
-	userID, _ := auth.UserIDFromContext(r.Context())
+	userID, err := auth.UserIDFromContext(r.Context())
+	if err != nil {
+		h.log.Error().Err(err).Msg("user id not in context")
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
 	results, err := h.service.ShortenURLBatch(r.Context(), items, userID)
 	if err != nil {
 		h.log.Info().Err(err).Msg("shorten url batch failed")
@@ -240,9 +255,10 @@ func (h *Handler) GetUserURLs(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	userID, ok := auth.UserIDFromContext(r.Context())
-	if !ok || userID == "" {
-		w.WriteHeader(http.StatusNoContent)
+	userID, err := auth.UserIDFromContext(r.Context())
+	if err != nil || userID == "" {
+		h.log.Error().Err(err).Msg("user id not in context")
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	urls, err := h.service.GetUserURLs(r.Context(), userID)
@@ -270,9 +286,10 @@ func (h *Handler) DeleteUserURLs(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
-	userID, ok := auth.UserIDFromContext(r.Context())
-	if !ok || userID == "" {
-		w.WriteHeader(http.StatusUnauthorized)
+	userID, err := auth.UserIDFromContext(r.Context())
+	if err != nil || userID == "" {
+		h.log.Error().Err(err).Msg("user id not in context")
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	var shortIDs []string
