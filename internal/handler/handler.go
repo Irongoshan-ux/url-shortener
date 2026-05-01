@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/Irongoshan-ux/url-shortener/internal/audit"
 	"github.com/Irongoshan-ux/url-shortener/internal/auth"
 	"github.com/Irongoshan-ux/url-shortener/internal/repository"
 	"github.com/Irongoshan-ux/url-shortener/internal/service"
@@ -28,14 +30,27 @@ type Handler struct {
 	service URLService
 	baseURL string
 	log     zerolog.Logger
+	audit   *audit.Subject
 }
 
-func NewHandler(svc URLService, baseURL string, log zerolog.Logger) *Handler {
+func NewHandler(svc URLService, baseURL string, log zerolog.Logger, auditSubject *audit.Subject) *Handler {
 	return &Handler{
 		service: svc,
 		baseURL: baseURL,
 		log:     log,
+		audit:   auditSubject,
 	}
+}
+
+func (h *Handler) notifyAudit(action, originalURL string, r *http.Request) {
+	if h.audit == nil {
+		return
+	}
+	var userID string
+	if uid, err := auth.UserIDFromContext(r.Context()); err == nil && uid != "" {
+		userID = uid
+	}
+	h.audit.Notify(context.Background(), audit.NewEvent(action, userID, originalURL))
 }
 
 func (h *Handler) buildFullURL(r *http.Request, shortID string) (string, error) {
@@ -79,6 +94,7 @@ func (h *Handler) ShortenURL(w http.ResponseWriter, r *http.Request) {
 	shortURL, err := h.service.ShortenURL(r.Context(), normalizedURL, userID)
 	if err != nil {
 		if errors.Is(err, service.ErrConflict) && shortURL != nil {
+			h.notifyAudit(audit.ActionShorten, normalizedURL, r)
 			fullURL, _ := h.buildFullURL(r, shortURL.ShortURL)
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusConflict)
@@ -95,6 +111,8 @@ func (h *Handler) ShortenURL(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to build short URL", http.StatusInternalServerError)
 		return
 	}
+
+	h.notifyAudit(audit.ActionShorten, normalizedURL, r)
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
@@ -130,6 +148,7 @@ func (h *Handler) ShortenURLJSON(w http.ResponseWriter, r *http.Request) {
 	shortURL, err := h.service.ShortenURL(r.Context(), normalizedURL, userID)
 	if err != nil {
 		if errors.Is(err, service.ErrConflict) && shortURL != nil {
+			h.notifyAudit(audit.ActionShorten, normalizedURL, r)
 			fullURL, _ := h.buildFullURL(r, shortURL.ShortURL)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusConflict)
@@ -146,6 +165,8 @@ func (h *Handler) ShortenURLJSON(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to build short URL", http.StatusInternalServerError)
 		return
 	}
+
+	h.notifyAudit(audit.ActionShorten, normalizedURL, r)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -237,6 +258,8 @@ func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusGone)
 		return
 	}
+
+	h.notifyAudit(audit.ActionFollow, url.OriginalURL, r)
 
 	http.Redirect(w, r, url.OriginalURL, http.StatusTemporaryRedirect)
 }
