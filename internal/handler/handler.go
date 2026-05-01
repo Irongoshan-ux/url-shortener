@@ -4,15 +4,16 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"strings"
 
+	"github.com/Irongoshan-ux/url-shortener/internal/auth"
 	"github.com/Irongoshan-ux/url-shortener/internal/repository"
 	"github.com/Irongoshan-ux/url-shortener/internal/service"
 	"github.com/Irongoshan-ux/url-shortener/internal/validation"
 	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog"
 )
 
 type shortenRequest struct {
@@ -26,12 +27,14 @@ type shortenResponse struct {
 type Handler struct {
 	service URLService
 	baseURL string
+	log     zerolog.Logger
 }
 
-func NewHandler(svc URLService, baseURL string) *Handler {
+func NewHandler(svc URLService, baseURL string, log zerolog.Logger) *Handler {
 	return &Handler{
 		service: svc,
 		baseURL: baseURL,
+		log:     log,
 	}
 }
 
@@ -66,21 +69,23 @@ func (h *Handler) ShortenURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	normalizedURL := parsedURL.String()
-
-	shortURL, err := h.service.ShortenURL(r.Context(), normalizedURL)
+	userID, err := auth.UserIDFromContext(r.Context())
 	if err != nil {
-		if errors.Is(err, repository.ErrAlreadyExists) {
-			fullURL, buildErr := h.buildFullURL(r, shortURL.ShortURL)
-			if buildErr != nil {
-				http.Error(w, "Failed to build short URL", http.StatusInternalServerError)
-				return
-			}
+		h.log.Error().Err(err).Msg("user id not in context")
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	shortURL, err := h.service.ShortenURL(r.Context(), normalizedURL, userID)
+	if err != nil {
+		if errors.Is(err, service.ErrConflict) && shortURL != nil {
+			fullURL, _ := h.buildFullURL(r, shortURL.ShortURL)
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusConflict)
 			w.Write([]byte(fullURL))
 			return
 		}
-		log.Printf("shorten url failed: %v", err)
+		h.log.Info().Err(err).Msg("shorten url failed")
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
@@ -115,21 +120,23 @@ func (h *Handler) ShortenURLJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	normalizedURL := parsedURL.String()
-
-	shortURL, err := h.service.ShortenURL(r.Context(), normalizedURL)
+	userID, err := auth.UserIDFromContext(r.Context())
 	if err != nil {
-		if errors.Is(err, repository.ErrAlreadyExists) {
-			fullURL, buildErr := h.buildFullURL(r, shortURL.ShortURL)
-			if buildErr != nil {
-				http.Error(w, "Failed to build short URL", http.StatusInternalServerError)
-				return
-			}
+		h.log.Error().Err(err).Msg("user id not in context")
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	shortURL, err := h.service.ShortenURL(r.Context(), normalizedURL, userID)
+	if err != nil {
+		if errors.Is(err, service.ErrConflict) && shortURL != nil {
+			fullURL, _ := h.buildFullURL(r, shortURL.ShortURL)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusConflict)
-			_ = json.NewEncoder(w).Encode(shortenResponse{Result: fullURL})
+			json.NewEncoder(w).Encode(shortenResponse{Result: fullURL})
 			return
 		}
-		log.Printf("shorten url failed: %v", err)
+		h.log.Info().Err(err).Msg("shorten url failed")
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
@@ -181,9 +188,15 @@ func (h *Handler) ShortenURLBatch(w http.ResponseWriter, r *http.Request) {
 		items = append(items, service.BatchItem{CorrelationID: x.CorrelationID, OriginalURL: parsedURL.String()})
 	}
 
-	results, err := h.service.ShortenURLBatch(r.Context(), items)
+	userID, err := auth.UserIDFromContext(r.Context())
 	if err != nil {
-		log.Printf("shorten url batch failed: %v", err)
+		h.log.Error().Err(err).Msg("user id not in context")
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	results, err := h.service.ShortenURLBatch(r.Context(), items, userID)
+	if err != nil {
+		h.log.Info().Err(err).Msg("shorten url batch failed")
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
@@ -210,19 +223,82 @@ func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	originalURL, err := h.service.GetOriginalURL(r.Context(), shortID)
+	url, err := h.service.GetURLByShortID(r.Context(), shortID)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			http.Error(w, "URL not found", http.StatusBadRequest)
+			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-
-		log.Printf("get original url failed: %v", err)
+		h.log.Info().Err(err).Msg("get original url failed")
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
+	if url.IsDeleted {
+		w.WriteHeader(http.StatusGone)
+		return
+	}
 
-	http.Redirect(w, r, originalURL, http.StatusTemporaryRedirect)
+	http.Redirect(w, r, url.OriginalURL, http.StatusTemporaryRedirect)
+}
+
+type userURLItem struct {
+	ShortURL    string `json:"short_url"`
+	OriginalURL string `json:"original_url"`
+}
+
+func (h *Handler) GetUserURLs(w http.ResponseWriter, r *http.Request) {
+	if !auth.HadValidCookieFromContext(r.Context()) {
+		if auth.HadCookieInRequestFromContext(r.Context()) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	userID, err := auth.UserIDFromContext(r.Context())
+	if err != nil || userID == "" {
+		h.log.Error().Err(err).Msg("user id not in context")
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	urls, err := h.service.GetUserURLs(r.Context(), userID)
+	if err != nil {
+		h.log.Info().Err(err).Msg("get user urls failed")
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	if len(urls) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	resp := make([]userURLItem, len(urls))
+	for i, u := range urls {
+		fullShort, _ := h.buildFullURL(r, u.ShortURL)
+		resp[i] = userURLItem{ShortURL: fullShort, OriginalURL: u.OriginalURL}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func (h *Handler) DeleteUserURLs(w http.ResponseWriter, r *http.Request) {
+	if !auth.HadValidCookieFromContext(r.Context()) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	userID, err := auth.UserIDFromContext(r.Context())
+	if err != nil || userID == "" {
+		h.log.Error().Err(err).Msg("user id not in context")
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	var shortIDs []string
+	if err := json.NewDecoder(r.Body).Decode(&shortIDs); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+	h.service.DeleteUserURLs(r.Context(), userID, shortIDs)
+	w.WriteHeader(http.StatusAccepted)
 }
 
 func (h *Handler) Router() chi.Router {
@@ -231,6 +307,8 @@ func (h *Handler) Router() chi.Router {
 	r.Post("/", h.ShortenURL)
 	r.Post("/api/shorten", h.ShortenURLJSON)
 	r.Post("/api/shorten/batch", h.ShortenURLBatch)
+	r.Get("/api/user/urls", h.GetUserURLs)
+	r.Delete("/api/user/urls", h.DeleteUserURLs)
 
 	r.Get("/{id}", h.Redirect)
 

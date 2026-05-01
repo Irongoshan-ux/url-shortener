@@ -69,6 +69,20 @@ func (mr *MockRepositoryMockRecorder) CreateBatch(ctx, urls any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateBatch", reflect.TypeOf((*MockRepository)(nil).CreateBatch), ctx, urls)
 }
 
+// DeleteByShortURLs mocks base method.
+func (m *MockRepository) DeleteByShortURLs(ctx context.Context, userID string, shortIDs []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteByShortURLs", ctx, userID, shortIDs)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteByShortURLs indicates an expected call of DeleteByShortURLs.
+func (mr *MockRepositoryMockRecorder) DeleteByShortURLs(ctx, userID, shortIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteByShortURLs", reflect.TypeOf((*MockRepository)(nil).DeleteByShortURLs), ctx, userID, shortIDs)
+}
+
 // GetByOriginalURL mocks base method.
 func (m *MockRepository) GetByOriginalURL(ctx context.Context, originalURL string) (*model.URL, error) {
 	m.ctrl.T.Helper()
@@ -97,4 +111,19 @@ func (m *MockRepository) GetByShortURL(ctx context.Context, shortURL string) (*m
 func (mr *MockRepositoryMockRecorder) GetByShortURL(ctx, shortURL any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByShortURL", reflect.TypeOf((*MockRepository)(nil).GetByShortURL), ctx, shortURL)
+}
+
+// GetByUserID mocks base method.
+func (m *MockRepository) GetByUserID(ctx context.Context, userID string) ([]*model.URL, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetByUserID", ctx, userID)
+	ret0, _ := ret[0].([]*model.URL)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetByUserID indicates an expected call of GetByUserID.
+func (mr *MockRepositoryMockRecorder) GetByUserID(ctx, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByUserID", reflect.TypeOf((*MockRepository)(nil).GetByUserID), ctx, userID)
 }

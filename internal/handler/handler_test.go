@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -9,13 +10,22 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Irongoshan-ux/url-shortener/internal/auth"
 	"github.com/Irongoshan-ux/url-shortener/internal/handler/mocks"
 	"github.com/Irongoshan-ux/url-shortener/internal/model"
 	"github.com/Irongoshan-ux/url-shortener/internal/repository"
 	"github.com/Irongoshan-ux/url-shortener/internal/service"
 	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog"
 	"go.uber.org/mock/gomock"
 )
+
+func withTestUser(ctx context.Context, userID string) context.Context {
+	ctx = auth.WithUserID(ctx, userID)
+	ctx = auth.WithHadValidCookie(ctx, true)
+	ctx = auth.WithHadCookieInRequest(ctx, true)
+	return ctx
+}
 
 func TestHandler_ShortenURL(t *testing.T) {
 	tests := []struct {
@@ -70,17 +80,10 @@ func TestHandler_ShortenURL(t *testing.T) {
 			expectedStatus: http.StatusInternalServerError,
 		},
 		{
-			name:   "service returns deterministic short id",
-			method: http.MethodPost,
-			body:   "https://example.com",
-			expectedStatus: http.StatusCreated,
-			expectedBody:   "http://localhost/existing123",
-		},
-		{
-			name:           "already exists returns 409 with existing short URL",
+			name:           "service returns deterministic short id",
 			method:         http.MethodPost,
 			body:           "https://example.com",
-			expectedStatus: http.StatusConflict,
+			expectedStatus: http.StatusCreated,
 			expectedBody:   "http://localhost/existing123",
 		},
 	}
@@ -96,26 +99,23 @@ func TestHandler_ShortenURL(t *testing.T) {
 			switch tt.name {
 			case "successful shorten":
 				svc.EXPECT().
-					ShortenURL(gomock.Any(), "https://example.com").
+					ShortenURL(gomock.Any(), "https://example.com", gomock.Any()).
 					Return(&model.URL{OriginalURL: "https://example.com", ShortURL: "abc123", CreatedAt: time.Now()}, nil)
 			case "service error":
 				svc.EXPECT().
-					ShortenURL(gomock.Any(), "https://example.com").
+					ShortenURL(gomock.Any(), "https://example.com", gomock.Any()).
 					Return(nil, errors.New("service failure"))
 			case "service returns deterministic short id":
 				svc.EXPECT().
-					ShortenURL(gomock.Any(), "https://example.com").
+					ShortenURL(gomock.Any(), "https://example.com", gomock.Any()).
 					Return(&model.URL{OriginalURL: "https://example.com", ShortURL: "existing123", CreatedAt: time.Now()}, nil)
-			case "already exists returns 409 with existing short URL":
-				svc.EXPECT().
-					ShortenURL(gomock.Any(), "https://example.com").
-					Return(&model.URL{OriginalURL: "https://example.com", ShortURL: "existing123", CreatedAt: time.Now()}, repository.ErrAlreadyExists)
 			default:
 			}
 
-			h := NewHandler(svc, "")
+			h := NewHandler(svc, "", zerolog.Nop())
 
 			req := httptest.NewRequest(tt.method, "/", strings.NewReader(tt.body))
+			req = req.WithContext(withTestUser(req.Context(), "test-user-id"))
 			req.Host = "localhost"
 			w := httptest.NewRecorder()
 
@@ -132,7 +132,7 @@ func TestHandler_ShortenURL(t *testing.T) {
 				}
 			}
 
-			if tt.expectedStatus == http.StatusCreated || tt.expectedStatus == http.StatusConflict {
+			if tt.expectedStatus == http.StatusCreated {
 				if w.Header().Get("Content-Type") != "text/plain" {
 					t.Errorf("expected Content-Type text/plain, got %s", w.Header().Get("Content-Type"))
 				}
@@ -157,10 +157,11 @@ func TestHandler_Redirect(t *testing.T) {
 			expectedLocation: "https://example.com",
 		},
 		{
-			name:   "URL not found",
-			method: http.MethodGet,
-			path:   "nonexistent",
-			expectedStatus: http.StatusBadRequest,
+			name:             "URL not found",
+			method:           http.MethodGet,
+			path:             "nonexistent",
+			expectedStatus:   http.StatusNotFound,
+			expectedLocation: "",
 		},
 		{
 			name:   "wrong method",
@@ -179,13 +180,13 @@ func TestHandler_Redirect(t *testing.T) {
 
 			switch tt.name {
 			case "successful redirect":
-				svc.EXPECT().GetOriginalURL(gomock.Any(), "abc123").Return("https://example.com", nil)
+				svc.EXPECT().GetURLByShortID(gomock.Any(), "abc123").Return(&model.URL{OriginalURL: "https://example.com", ShortURL: "abc123", IsDeleted: false}, nil)
 			case "URL not found":
-				svc.EXPECT().GetOriginalURL(gomock.Any(), "nonexistent").Return("", repository.ErrNotFound)
+				svc.EXPECT().GetURLByShortID(gomock.Any(), "nonexistent").Return((*model.URL)(nil), repository.ErrNotFound)
 			default:
 			}
 
-			h := NewHandler(svc, "")
+			h := NewHandler(svc, "", zerolog.Nop())
 
 			r := chi.NewRouter()
 			r.Mount("/", h.Router())
@@ -228,7 +229,7 @@ func TestHandler_ShortenURLJSON(t *testing.T) {
 			expectJSON:     true,
 			setupMock: func(s *mocks.MockURLService) {
 				s.EXPECT().
-					ShortenURL(gomock.Any(), "https://practicum.yandex.ru").
+					ShortenURL(gomock.Any(), "https://practicum.yandex.ru", gomock.Any()).
 					Return(&model.URL{OriginalURL: "https://practicum.yandex.ru", ShortURL: "EwHXdJfB", CreatedAt: time.Now()}, nil)
 			},
 		},
@@ -262,21 +263,8 @@ func TestHandler_ShortenURLJSON(t *testing.T) {
 			expectedStatus: http.StatusInternalServerError,
 			setupMock: func(s *mocks.MockURLService) {
 				s.EXPECT().
-					ShortenURL(gomock.Any(), "https://example.com").
+					ShortenURL(gomock.Any(), "https://example.com", gomock.Any()).
 					Return(nil, errors.New("service failure"))
-			},
-		},
-		{
-			name:           "already exists returns 409 with existing short URL",
-			body:           `{"url":"https://practicum.yandex.ru"}`,
-			baseURL:        "http://localhost:8080",
-			expectedStatus: http.StatusConflict,
-			expectedBody:   `{"result":"http://localhost:8080/EwHXdJfB"}`,
-			expectJSON:     true,
-			setupMock: func(s *mocks.MockURLService) {
-				s.EXPECT().
-					ShortenURL(gomock.Any(), "https://practicum.yandex.ru").
-					Return(&model.URL{OriginalURL: "https://practicum.yandex.ru", ShortURL: "EwHXdJfB", CreatedAt: time.Now()}, repository.ErrAlreadyExists)
 			},
 		},
 	}
@@ -289,9 +277,10 @@ func TestHandler_ShortenURLJSON(t *testing.T) {
 			svc := mocks.NewMockURLService(ctrl)
 			tt.setupMock(svc)
 
-			h := NewHandler(svc, tt.baseURL)
+			h := NewHandler(svc, tt.baseURL, zerolog.Nop())
 
 			req := httptest.NewRequest(http.MethodPost, "/api/shorten", strings.NewReader(tt.body))
+			req = req.WithContext(withTestUser(req.Context(), "test-user-id"))
 			req.Header.Set("Content-Type", "application/json")
 			req.Host = "localhost"
 			w := httptest.NewRecorder()
@@ -326,14 +315,15 @@ func TestHandler_ShortenURLBatch(t *testing.T) {
 			ShortenURLBatch(gomock.Any(), gomock.Cond(func(items any) bool {
 				list, ok := items.([]service.BatchItem)
 				return ok && len(list) == 2 && list[0].CorrelationID == "1" && list[1].CorrelationID == "2"
-			})).
+			}), gomock.Any()).
 			Return([]service.BatchResult{
 				{CorrelationID: "1", ShortURL: "id1"},
 				{CorrelationID: "2", ShortURL: "id2"},
 			}, nil)
-		h := NewHandler(svc, "http://localhost:8080")
+		h := NewHandler(svc, "http://localhost:8080", zerolog.Nop())
 		body := `[{"correlation_id":"1","original_url":"https://a.com"},{"correlation_id":"2","original_url":"https://b.com"}]`
 		req := httptest.NewRequest(http.MethodPost, "/api/shorten/batch", strings.NewReader(body))
+		req = req.WithContext(withTestUser(req.Context(), "test-user-id"))
 		req.Header.Set("Content-Type", "application/json")
 		req.Host = "localhost"
 		w := httptest.NewRecorder()
@@ -358,8 +348,9 @@ func TestHandler_ShortenURLBatch(t *testing.T) {
 	t.Run("empty batch", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
-		h := NewHandler(mocks.NewMockURLService(ctrl), "")
+		h := NewHandler(mocks.NewMockURLService(ctrl), "", zerolog.Nop())
 		req := httptest.NewRequest(http.MethodPost, "/api/shorten/batch", strings.NewReader("[]"))
+		req = req.WithContext(withTestUser(req.Context(), "test-user-id"))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		r := chi.NewRouter()
@@ -372,8 +363,9 @@ func TestHandler_ShortenURLBatch(t *testing.T) {
 	t.Run("invalid JSON", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
-		h := NewHandler(mocks.NewMockURLService(ctrl), "")
+		h := NewHandler(mocks.NewMockURLService(ctrl), "", zerolog.Nop())
 		req := httptest.NewRequest(http.MethodPost, "/api/shorten/batch", strings.NewReader("not json"))
+		req = req.WithContext(withTestUser(req.Context(), "test-user-id"))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		r := chi.NewRouter()
@@ -400,15 +392,15 @@ func TestHandler_Root(t *testing.T) {
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:   "GET /smth - should return error",
-			method: http.MethodGet,
-			path:   "smth",
-			expectedStatus: http.StatusBadRequest,
+			name:           "GET /smth - should return error",
+			method:         http.MethodGet,
+			path:           "smth",
+			expectedStatus: http.StatusNotFound,
 		},
 		{
-			name:   "GET /smth/else - should return error",
-			method: http.MethodGet,
-			path:   "smth/else",
+			name:           "GET /smth/else - should return error",
+			method:         http.MethodGet,
+			path:           "smth/else",
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
@@ -466,24 +458,25 @@ func TestHandler_Root(t *testing.T) {
 			defer ctrl.Finish()
 
 			svc := mocks.NewMockURLService(ctrl)
-			h := NewHandler(svc, "")
+			h := NewHandler(svc, "", zerolog.Nop())
 
 			r := chi.NewRouter()
 			r.Mount("/", h.Router())
 
 			switch tt.name {
 			case "GET /smth - should return error":
-				svc.EXPECT().GetOriginalURL(gomock.Any(), "smth").Return("", repository.ErrNotFound)
+				svc.EXPECT().GetURLByShortID(gomock.Any(), "smth").Return((*model.URL)(nil), repository.ErrNotFound)
 			case "GET /{id} - should redirect":
-				svc.EXPECT().GetOriginalURL(gomock.Any(), "abc123").Return("https://example.com", nil)
+				svc.EXPECT().GetURLByShortID(gomock.Any(), "abc123").Return(&model.URL{OriginalURL: "https://example.com", ShortURL: "abc123", IsDeleted: false}, nil)
 			case "POST / - should shorten":
-				svc.EXPECT().ShortenURL(gomock.Any(), "https://example.com").Return(&model.URL{OriginalURL: "https://example.com", ShortURL: "abc123", CreatedAt: time.Now()}, nil)
+				svc.EXPECT().ShortenURL(gomock.Any(), "https://example.com", gomock.Any()).Return(&model.URL{OriginalURL: "https://example.com", ShortURL: "abc123", CreatedAt: time.Now()}, nil)
 			case "POST /api/shorten - should shorten":
-				svc.EXPECT().ShortenURL(gomock.Any(), "https://example.com").Return(&model.URL{OriginalURL: "https://example.com", ShortURL: "abc123", CreatedAt: time.Now()}, nil)
+				svc.EXPECT().ShortenURL(gomock.Any(), "https://example.com", gomock.Any()).Return(&model.URL{OriginalURL: "https://example.com", ShortURL: "abc123", CreatedAt: time.Now()}, nil)
 			default:
 			}
 
 			req := httptest.NewRequest(tt.method, "/"+tt.path, strings.NewReader(tt.body))
+			req = req.WithContext(withTestUser(req.Context(), "test-user-id"))
 			req.Host = "localhost"
 			w := httptest.NewRecorder()
 
