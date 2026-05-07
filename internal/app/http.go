@@ -54,7 +54,7 @@ func buildAuditSubject(cfg *config.Config, log zerolog.Logger) (*audit.Subject, 
 	return audit.NewSubject(observers...), nil
 }
 
-// NewHTTPHandler builds the root chi router: gzip, logging, recovery, auth cookie, /ping, optional pprof, and handler routes.
+// NewHTTPHandler builds the root chi router: gzip, logging, recovery, auth cookie, /ping and handler routes.
 func NewHTTPHandler(ctx context.Context, cfg *config.Config, svc *service.Service, pool *pgxpool.Pool, log zerolog.Logger) (http.Handler, error) {
 	_ = ctx
 	baseURL, err := validation.NormalizeBaseURL(cfg.BaseURL)
@@ -68,11 +68,12 @@ func NewHTTPHandler(ctx context.Context, cfg *config.Config, svc *service.Servic
 	}
 
 	r := chi.NewRouter()
-	MountPprof(r)
 	r.Use(GzipMiddleware)
 	r.Use(LoggingMiddleware(log))
 	r.Use(middleware.Recoverer)
 	r.Use(auth.CookieMiddleware(cfg.CookieSecret))
+
+	MountPprof(r)
 
 	r.Get("/ping", PingHandler(pool, log))
 
