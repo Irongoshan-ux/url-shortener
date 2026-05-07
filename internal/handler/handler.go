@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -55,7 +56,12 @@ func (h *Handler) notifyAudit(action, originalURL string, r *http.Request) {
 
 func (h *Handler) buildFullURL(r *http.Request, shortID string) (string, error) {
 	if h.baseURL != "" {
-		return url.JoinPath(h.baseURL, shortID)
+		var b strings.Builder
+		b.Grow(len(h.baseURL) + 1 + len(shortID))
+		b.WriteString(h.baseURL)
+		b.WriteByte('/')
+		b.WriteString(shortID)
+		return b.String(), nil
 	}
 	scheme := "http"
 	if r.TLS != nil {
@@ -72,7 +78,7 @@ func (h *Handler) ShortenURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	originalURL := strings.TrimSpace(string(body))
+	originalURL := string(bytes.TrimSpace(body))
 	if originalURL == "" {
 		http.Error(w, "URL is required", http.StatusBadRequest)
 		return
