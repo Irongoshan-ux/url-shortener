@@ -32,5 +32,3 @@ func NormalizeBaseURL(baseURL string) (string, error) {
 	}
 	return parsed.String(), nil
 }
-
-

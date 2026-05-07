@@ -17,5 +17,3 @@ func WithIDGenerator(fn func() (string, error)) Option {
 		}
 	}
 }
-
-

@@ -8,10 +8,10 @@ import (
 
 	"github.com/Irongoshan-ux/url-shortener/internal/model"
 	"github.com/Irongoshan-ux/url-shortener/internal/repository/sqlc/db"
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/jackc/pgerrcode"
 )
 
 const pgConstraintUniqueOriginalURL = "urls_original_url_not_deleted_key"
