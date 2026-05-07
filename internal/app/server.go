@@ -9,6 +9,7 @@ import (
 	"github.com/Irongoshan-ux/url-shortener/internal/config"
 )
 
+// NewHTTPServer validates cfg.ServerAddress and returns an http.Server using the given handler.
 func NewHTTPServer(cfg *config.Config, h http.Handler) (*http.Server, error) {
 	addr := strings.TrimSpace(cfg.ServerAddress)
 	if addr == "" {

@@ -7,6 +7,7 @@ import (
 	"github.com/Irongoshan-ux/url-shortener/internal/model"
 )
 
+// MemoryRepository is a process-local implementation safe for concurrent use (dev/tests).
 type MemoryRepository struct {
 	mu             sync.RWMutex
 	urlsByShort    map[string]*model.URL
@@ -14,6 +15,7 @@ type MemoryRepository struct {
 	urlsByUser     map[string][]*model.URL
 }
 
+// NewMemoryRepository creates an empty in-memory store.
 func NewMemoryRepository() *MemoryRepository {
 	return &MemoryRepository{
 		urlsByShort:    make(map[string]*model.URL),

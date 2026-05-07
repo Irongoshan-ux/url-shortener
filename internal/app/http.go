@@ -1,3 +1,4 @@
+// Package app composes middleware, routes, and http.Server for the URL shortener binary.
 package app
 
 import (
@@ -19,6 +20,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// PingHandler responds 200, or pings pool when non-nil and returns 500 on database errors.
 func PingHandler(pool *pgxpool.Pool, log zerolog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if pool == nil {
@@ -52,6 +54,7 @@ func buildAuditSubject(cfg *config.Config, log zerolog.Logger) (*audit.Subject, 
 	return audit.NewSubject(observers...), nil
 }
 
+// NewHTTPHandler builds the root chi router: gzip, logging, recovery, auth cookie, /ping, optional pprof, and handler routes.
 func NewHTTPHandler(ctx context.Context, cfg *config.Config, svc *service.Service, pool *pgxpool.Pool, log zerolog.Logger) (http.Handler, error) {
 	_ = ctx
 	baseURL, err := validation.NormalizeBaseURL(cfg.BaseURL)

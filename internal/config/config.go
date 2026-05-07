@@ -1,3 +1,4 @@
+// Package config loads application settings from flags and environment variables (env overrides defaults set by flags).
 package config
 
 import (
@@ -6,6 +7,7 @@ import (
 	"github.com/ilyakaznacheev/cleanenv"
 )
 
+// Config holds runtime settings for the HTTP server, storage backends, cookies, and optional audit sinks.
 type Config struct {
 	ServerAddress   string `env:"SERVER_ADDRESS"`
 	BaseURL         string `env:"BASE_URL"`
@@ -16,6 +18,7 @@ type Config struct {
 	AuditURL        string `env:"AUDIT_URL"`
 }
 
+// Load parses flags, then merges environment into cfg (see field env tags). Call once from main.
 func Load() (*Config, error) {
 	var cfg Config
 

@@ -31,6 +31,7 @@ func (w *responseWriter) statusCode() int {
 	return w.status
 }
 
+// LoggingMiddleware logs method, URI, duration, status, and response size with the provided logger.
 func LoggingMiddleware(log zerolog.Logger) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

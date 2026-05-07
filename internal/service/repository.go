@@ -6,6 +6,7 @@ import (
 	"github.com/Irongoshan-ux/url-shortener/internal/model"
 )
 
+// Repository abstracts storage for URL mappings used by Service.
 type Repository interface {
 	Create(ctx context.Context, url *model.URL) error
 	CreateBatch(ctx context.Context, urls []*model.URL) error

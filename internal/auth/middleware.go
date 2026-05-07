@@ -1,3 +1,4 @@
+// Package auth signs and verifies the user_id cookie and stores derived values in request context for handlers.
 package auth
 
 import (
@@ -5,6 +6,7 @@ import (
 	"net/http"
 )
 
+// CookieMiddleware assigns or refreshes a JWT cookie with an anonymous user id and passes userID into request context.
 func CookieMiddleware(secret string) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
