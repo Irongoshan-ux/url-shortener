@@ -14,7 +14,7 @@ const (
 )
 
 var (
-	ErrNoUserIDInContext   = errors.New("user id not in context")
+	ErrNoUserIDInContext      = errors.New("user id not in context")
 	ErrInvalidUserIDInContext = errors.New("user id in context has invalid type")
 )
 
