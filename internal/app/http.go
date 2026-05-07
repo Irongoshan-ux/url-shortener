@@ -65,6 +65,7 @@ func NewHTTPHandler(ctx context.Context, cfg *config.Config, svc *service.Servic
 	}
 
 	r := chi.NewRouter()
+	MountPprof(r)
 	r.Use(GzipMiddleware)
 	r.Use(LoggingMiddleware(log))
 	r.Use(middleware.Recoverer)

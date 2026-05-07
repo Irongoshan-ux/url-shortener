@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"github.com/Irongoshan-ux/url-shortener/internal/model"
@@ -33,7 +32,7 @@ func (r *MemoryRepository) Create(ctx context.Context, url *model.URL) error {
 		}
 	}
 	if _, exists := r.urlsByShort[url.ShortURL]; exists {
-		return fmt.Errorf("short id %q already exists: %w", url.ShortURL, ErrAlreadyExists)
+		return ErrAlreadyExists
 	}
 
 	r.urlsByShort[url.ShortURL] = url
@@ -55,7 +54,7 @@ func (r *MemoryRepository) CreateBatch(ctx context.Context, urls []*model.URL) e
 			}
 		}
 		if _, exists := r.urlsByShort[u.ShortURL]; exists {
-			return fmt.Errorf("short id %q already exists: %w", u.ShortURL, ErrAlreadyExists)
+			return ErrAlreadyExists
 		}
 	}
 	for _, u := range urls {
@@ -101,7 +100,7 @@ func (r *MemoryRepository) GetByUserID(ctx context.Context, userID string) ([]*m
 	if len(list) == 0 {
 		return nil, nil
 	}
-	var out []*model.URL
+	out := make([]*model.URL, 0, len(list))
 	for _, u := range list {
 		if !u.IsDeleted {
 			out = append(out, u)

@@ -35,10 +35,10 @@ type Service struct {
 
 func NewService(repo Repository, opts ...Option) *Service {
 	s := &Service{
-		repo:      repo,
+		repo:        repo,
 		maxAttempts: 10,
-		deleteCh:  make(chan deleteJob, 1024),
-		deleteSem: make(chan struct{}, deleteWriterSemSize),
+		deleteCh:    make(chan deleteJob, 1024),
+		deleteSem:   make(chan struct{}, deleteWriterSemSize),
 	}
 	s.idGen = s.generateShortID
 	for _, opt := range opts {
@@ -178,7 +178,10 @@ func (s *Service) ShortenURLBatch(ctx context.Context, items []BatchItem, userID
 		return nil, nil
 	}
 	results := make([]BatchResult, len(items))
-	type indexCorr struct{ index int; correlationID string }
+	type indexCorr struct {
+		index         int
+		correlationID string
+	}
 	toCreateByURL := make(map[string][]indexCorr)
 	var uniqueOrder []string
 
@@ -233,7 +236,7 @@ func (s *Service) generateShortID() (string, error) {
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
-
-	encoded := base64.URLEncoding.EncodeToString(b)
-	return encoded[:8], nil
+	var enc [8]byte
+	base64.RawURLEncoding.Encode(enc[:], b)
+	return string(enc[:]), nil
 }
