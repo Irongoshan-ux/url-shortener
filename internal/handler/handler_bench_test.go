@@ -36,14 +36,15 @@ func BenchmarkHandler_ShortenURLJSON(b *testing.B) {
 	h := NewHandler(svc, "http://localhost:8080", zerolog.Nop(), nil)
 	body := `{"url":"https://example.com/page"}`
 
-	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
+		b.StopTimer()
 		req := httptest.NewRequest(http.MethodPost, "/api/shorten", strings.NewReader(body))
 		req = req.WithContext(withBenchUser(req.Context()))
 		req.Header.Set("Content-Type", "application/json")
 		req.Host = "localhost:8080"
 		w := httptest.NewRecorder()
+		b.StartTimer()
 		h.ShortenURLJSON(w, req)
 	}
 }
@@ -60,12 +61,13 @@ func BenchmarkHandler_Redirect(b *testing.B) {
 	r := chi.NewRouter()
 	r.Get("/{id}", h.Redirect)
 
-	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
+		b.StopTimer()
 		req := httptest.NewRequest(http.MethodGet, "/abc123", nil)
 		req = req.WithContext(withBenchUser(req.Context()))
 		w := httptest.NewRecorder()
+		b.StartTimer()
 		r.ServeHTTP(w, req)
 	}
 }
@@ -78,12 +80,16 @@ func BenchmarkHandler_ParseAndShorten_plain(b *testing.B) {
 	r.Use(auth.CookieMiddleware("s"))
 	r.Mount("/", h.Router())
 
-	b.ResetTimer()
+	var n int
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("https://plain.example/post/"+strings.Repeat("x", i%20)))
+	for b.Loop() {
+		b.StopTimer()
+		body := "https://plain.example/post/" + strings.Repeat("x", n%20)
+		n++
+		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
 		req.Host = "localhost:8080"
 		w := httptest.NewRecorder()
+		b.StartTimer()
 		r.ServeHTTP(w, req)
 	}
 }

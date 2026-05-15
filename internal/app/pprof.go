@@ -6,8 +6,8 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// MountPprof registers standard net/http/pprof paths under /debug/pprof/.
-func MountPprof(r chi.Router) {
+// mountPprof is package-local wiring for standard net/http/pprof under /debug/pprof/.
+func mountPprof(r chi.Router) {
 	r.HandleFunc("/debug/pprof/", pprof.Index)
 	r.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
 	r.HandleFunc("/debug/pprof/profile", pprof.Profile)

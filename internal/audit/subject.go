@@ -5,7 +5,6 @@ import (
 	"sync"
 )
 
-// Observer is notified of audit events (Observer pattern).
 type Observer interface {
 	OnAudit(ctx context.Context, e Event)
 }
@@ -39,6 +38,6 @@ func (s *Subject) Notify(ctx context.Context, e Event) {
 	list := append([]Observer(nil), s.observers...)
 	s.mu.RUnlock()
 	for _, o := range list {
-		o.OnAudit(ctx, e)
+		go o.OnAudit(ctx, e)
 	}
 }

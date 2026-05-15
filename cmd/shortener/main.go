@@ -69,10 +69,11 @@ func main() {
 	}
 
 	svc := service.NewService(repo)
-	httpHandler, err := app.NewHTTPHandler(ctx, cfg, svc, pool, logger)
+	httpHandler, httpCleanup, err := app.NewHTTPHandler(ctx, cfg, svc, pool, logger)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Failed to initialize HTTP handler")
 	}
+	defer httpCleanup()
 
 	server, err := app.NewHTTPServer(cfg, httpHandler)
 	if err != nil {

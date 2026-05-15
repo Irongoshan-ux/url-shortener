@@ -1,9 +1,6 @@
 package audit
 
-import (
-	"encoding/json"
-	"time"
-)
+import "time"
 
 const (
 	ActionShorten = "shorten"
@@ -24,8 +21,4 @@ func NewEvent(action, userID, originalURL string) Event {
 		UserID:      userID,
 		OriginalURL: originalURL,
 	}
-}
-
-func (e Event) MarshalJSONLine() ([]byte, error) {
-	return json.Marshal(e)
 }

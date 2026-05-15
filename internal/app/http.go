@@ -36,35 +36,54 @@ func PingHandler(pool *pgxpool.Pool, log zerolog.Logger) http.HandlerFunc {
 	}
 }
 
-func buildAuditSubject(cfg *config.Config, log zerolog.Logger) (*audit.Subject, error) {
+func buildAuditSubject(cfg *config.Config, log zerolog.Logger) (*audit.Subject, func(), error) {
+	noop := func() {}
 	var observers []audit.Observer
+	var closers []func()
+	cleanup := func() {
+		for i := len(closers) - 1; i >= 0; i-- {
+			closers[i]()
+		}
+	}
+
 	if p := strings.TrimSpace(cfg.AuditFile); p != "" {
-		observers = append(observers, audit.NewFileObserver(p, log))
+		fo, err := audit.NewFileObserver(p, log)
+		if err != nil {
+			return nil, noop, err
+		}
+		observers = append(observers, fo)
+		closers = append(closers, func() {
+			if err := fo.Close(); err != nil {
+				log.Error().Err(err).Str("path", p).Msg("audit file: close")
+			}
+		})
 	}
 	if raw := strings.TrimSpace(cfg.AuditURL); raw != "" {
 		u, err := url.Parse(raw)
 		if err != nil || u.Scheme == "" || u.Host == "" {
-			return nil, fmt.Errorf("invalid audit-url %q: must be absolute http(s) URL", cfg.AuditURL)
+			cleanup()
+			return nil, noop, fmt.Errorf("invalid audit-url %q: must be absolute http(s) URL", cfg.AuditURL)
 		}
 		observers = append(observers, audit.NewHTTPObserver(raw, log))
 	}
 	if len(observers) == 0 {
-		return nil, nil
+		return nil, noop, nil
 	}
-	return audit.NewSubject(observers...), nil
+	return audit.NewSubject(observers...), cleanup, nil
 }
 
 // NewHTTPHandler builds the root chi router: gzip, logging, recovery, auth cookie, /ping and handler routes.
-func NewHTTPHandler(ctx context.Context, cfg *config.Config, svc *service.Service, pool *pgxpool.Pool, log zerolog.Logger) (http.Handler, error) {
+// The returned cleanup closes audit sinks (e.g. audit file); call it on shutdown, typically with defer in main.
+func NewHTTPHandler(ctx context.Context, cfg *config.Config, svc *service.Service, pool *pgxpool.Pool, log zerolog.Logger) (http.Handler, func(), error) {
 	_ = ctx
 	baseURL, err := validation.NormalizeBaseURL(cfg.BaseURL)
 	if err != nil {
-		return nil, err
+		return nil, func() {}, err
 	}
 
-	auditSubject, err := buildAuditSubject(cfg, log)
+	auditSubject, auditCleanup, err := buildAuditSubject(cfg, log)
 	if err != nil {
-		return nil, err
+		return nil, func() {}, err
 	}
 
 	r := chi.NewRouter()
@@ -73,12 +92,12 @@ func NewHTTPHandler(ctx context.Context, cfg *config.Config, svc *service.Servic
 	r.Use(middleware.Recoverer)
 	r.Use(auth.CookieMiddleware(cfg.CookieSecret))
 
-	MountPprof(r)
+	mountPprof(r)
 
 	r.Get("/ping", PingHandler(pool, log))
 
 	h := handler.NewHandler(svc, baseURL, log, auditSubject)
 	r.Mount("/", h.Router())
 
-	return r, nil
+	return r, auditCleanup, nil
 }

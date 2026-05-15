@@ -3,13 +3,17 @@ package audit
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"time"
 
+	"github.com/hashicorp/go-retryablehttp"
 	"github.com/rs/zerolog"
 )
 
 const httpAuditTimeout = 10 * time.Second
+
+const httpAuditRetryMax = 3
 
 type HTTPObserver struct {
 	url    string
@@ -18,23 +22,25 @@ type HTTPObserver struct {
 }
 
 func NewHTTPObserver(endpoint string, log zerolog.Logger) *HTTPObserver {
+	rc := retryablehttp.NewClient()
+	rc.RetryMax = httpAuditRetryMax
+	rc.HTTPClient.Timeout = httpAuditTimeout
+	rc.Logger = nil
+
 	return &HTTPObserver{
-		url: endpoint,
-		client: &http.Client{
-			Timeout: httpAuditTimeout,
-		},
-		log: log,
+		url:    endpoint,
+		client: rc.StandardClient(),
+		log:    log,
 	}
 }
 
 func (h *HTTPObserver) OnAudit(ctx context.Context, e Event) {
-	_ = ctx
-	body, err := e.MarshalJSONLine()
+	body, err := json.Marshal(e)
 	if err != nil {
 		h.log.Error().Err(err).Msg("audit http: marshal event")
 		return
 	}
-	reqCtx, cancel := context.WithTimeout(context.Background(), httpAuditTimeout)
+	reqCtx, cancel := context.WithTimeout(ctx, httpAuditTimeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, h.url, bytes.NewReader(body))
