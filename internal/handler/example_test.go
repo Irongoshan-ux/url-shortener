@@ -48,7 +48,7 @@ func Example_shortenPlain() {
 
 	resp, err := client.Post(baseURL+"/", "text/plain", strings.NewReader("https://example.org/page"))
 	if err != nil {
-		panic(err)
+		return
 	}
 	defer resp.Body.Close()
 
@@ -67,7 +67,7 @@ func Example_shortenJSON() {
 
 	resp, err := client.Post(baseURL+"/api/shorten", "application/json", strings.NewReader(`{"url":"https://example.org/json"}`))
 	if err != nil {
-		panic(err)
+		return
 	}
 	defer resp.Body.Close()
 
@@ -75,7 +75,7 @@ func Example_shortenJSON() {
 		Result string `json:"result"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		panic(err)
+		return
 	}
 	fmt.Println(resp.StatusCode)
 	fmt.Println(out.Result)
@@ -92,7 +92,7 @@ func Example_shortenBatch() {
 	payload := `[{"correlation_id":"a","original_url":"https://example.org/a"},{"correlation_id":"b","original_url":"https://example.org/b"}]`
 	resp, err := client.Post(baseURL+"/api/shorten/batch", "application/json", strings.NewReader(payload))
 	if err != nil {
-		panic(err)
+		return
 	}
 	defer resp.Body.Close()
 
@@ -101,7 +101,7 @@ func Example_shortenBatch() {
 		ShortURL      string `json:"short_url"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		panic(err)
+		return
 	}
 	fmt.Println(resp.StatusCode)
 	for _, row := range out {
@@ -120,7 +120,7 @@ func Example_redirect() {
 
 	resp, err := client.Post(baseURL+"/", "text/plain", strings.NewReader("https://example.org/target"))
 	if err != nil {
-		panic(err)
+		return
 	}
 	resp.Body.Close()
 
@@ -132,7 +132,7 @@ func Example_redirect() {
 	}
 	resp2, err := noFollow.Get(baseURL + "/ex1")
 	if err != nil {
-		panic(err)
+		return
 	}
 	defer resp2.Body.Close()
 
@@ -150,23 +150,23 @@ func Example_userURLs() {
 
 	resp, err := client.Post(baseURL+"/", "text/plain", strings.NewReader("https://example.org/mine"))
 	if err != nil {
-		panic(err)
+		return
 	}
 	resp.Body.Close()
 
 	resp2, err := client.Get(baseURL + "/api/user/urls")
 	if err != nil {
-		panic(err)
+		return
 	}
 	defer resp2.Body.Close()
 
 	body, err := io.ReadAll(resp2.Body)
 	if err != nil {
-		panic(err)
+		return
 	}
 	var items []map[string]any
 	if err := json.Unmarshal(body, &items); err != nil {
-		panic(err)
+		return
 	}
 	fmt.Println(resp2.StatusCode)
 	fmt.Println(len(items))
@@ -184,18 +184,18 @@ func Example_deleteUserURLs() {
 
 	resp, err := client.Post(baseURL+"/", "text/plain", strings.NewReader("https://example.org/del"))
 	if err != nil {
-		panic(err)
+		return
 	}
 	resp.Body.Close()
 
 	req, err := http.NewRequest(http.MethodDelete, baseURL+"/api/user/urls", bytes.NewReader([]byte(`["ex1"]`)))
 	if err != nil {
-		panic(err)
+		return
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp2, err := client.Do(req)
 	if err != nil {
-		panic(err)
+		return
 	}
 	defer resp2.Body.Close()
 
