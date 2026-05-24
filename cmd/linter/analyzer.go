@@ -6,7 +6,6 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
-// analyzer runs all project lint checks in one pass for singlechecker.
 var analyzer = &analysis.Analyzer{
 	Name: "linter",
 	Doc:  "checks for panic, log.Fatal, and os.Exit misuse",
