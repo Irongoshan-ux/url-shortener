@@ -19,12 +19,14 @@ type fileRecord struct {
 	IsDeleted   bool      `json:"is_deleted"`
 }
 
+// FileRepository persists data to a JSON file while delegating to an embedded MemoryRepository.
 type FileRepository struct {
 	path string
 	mem  *MemoryRepository
 	mu   sync.RWMutex
 }
 
+// NewFileRepository loads existing records from path when non-empty; path "" yields an in-memory-only store.
 func NewFileRepository(path string) (*FileRepository, error) {
 	mem := NewMemoryRepository()
 	f := &FileRepository{path: path, mem: mem}

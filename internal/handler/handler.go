@@ -1,6 +1,9 @@
+// Package handler implements HTTP handlers for the URL shortener REST API (plain-text and JSON shorten, batch, redirect, user URLs).
 package handler
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -8,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/Irongoshan-ux/url-shortener/internal/audit"
 	"github.com/Irongoshan-ux/url-shortener/internal/auth"
 	"github.com/Irongoshan-ux/url-shortener/internal/repository"
 	"github.com/Irongoshan-ux/url-shortener/internal/service"
@@ -24,23 +28,43 @@ type shortenResponse struct {
 	Result string `json:"result"`
 }
 
+// Handler serves HTTP requests using URLService. baseURL is used to build absolute short links in responses; if empty, scheme and host are taken from each request.
 type Handler struct {
 	service URLService
 	baseURL string
 	log     zerolog.Logger
+	audit   *audit.Subject
 }
 
-func NewHandler(svc URLService, baseURL string, log zerolog.Logger) *Handler {
+// NewHandler constructs a Handler. auditSubject may be nil; log is used for server-side errors and diagnostics.
+func NewHandler(svc URLService, baseURL string, log zerolog.Logger, auditSubject *audit.Subject) *Handler {
 	return &Handler{
 		service: svc,
 		baseURL: baseURL,
 		log:     log,
+		audit:   auditSubject,
 	}
+}
+
+func (h *Handler) notifyAudit(action, originalURL string, r *http.Request) {
+	if h.audit == nil {
+		return
+	}
+	var userID string
+	if uid, err := auth.UserIDFromContext(r.Context()); err == nil && uid != "" {
+		userID = uid
+	}
+	h.audit.Notify(context.Background(), audit.NewEvent(action, userID, originalURL))
 }
 
 func (h *Handler) buildFullURL(r *http.Request, shortID string) (string, error) {
 	if h.baseURL != "" {
-		return url.JoinPath(h.baseURL, shortID)
+		var b strings.Builder
+		b.Grow(len(h.baseURL) + 1 + len(shortID))
+		b.WriteString(h.baseURL)
+		b.WriteByte('/')
+		b.WriteString(shortID)
+		return b.String(), nil
 	}
 	scheme := "http"
 	if r.TLS != nil {
@@ -50,6 +74,7 @@ func (h *Handler) buildFullURL(r *http.Request, shortID string) (string, error) 
 	return url.JoinPath(base, shortID)
 }
 
+// ShortenURL handles POST / with a plain-text body containing the original URL. Requires a user id in context (via auth middleware). On success responds with 201 and the short URL as text/plain. Returns 409 with the existing short URL if the original URL was already shortened for this user.
 func (h *Handler) ShortenURL(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -57,7 +82,7 @@ func (h *Handler) ShortenURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	originalURL := strings.TrimSpace(string(body))
+	originalURL := string(bytes.TrimSpace(body))
 	if originalURL == "" {
 		http.Error(w, "URL is required", http.StatusBadRequest)
 		return
@@ -79,6 +104,7 @@ func (h *Handler) ShortenURL(w http.ResponseWriter, r *http.Request) {
 	shortURL, err := h.service.ShortenURL(r.Context(), normalizedURL, userID)
 	if err != nil {
 		if errors.Is(err, service.ErrConflict) && shortURL != nil {
+			h.notifyAudit(audit.ActionShorten, normalizedURL, r)
 			fullURL, _ := h.buildFullURL(r, shortURL.ShortURL)
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusConflict)
@@ -96,11 +122,14 @@ func (h *Handler) ShortenURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.notifyAudit(audit.ActionShorten, normalizedURL, r)
+
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte(fullURL))
 }
 
+// ShortenURLJSON handles POST /api/shorten with JSON body {"url":"..."}. Response is JSON {"result":"<short url>"} with 201 on success, or 409 with the same shape if the URL already exists.
 func (h *Handler) ShortenURLJSON(w http.ResponseWriter, r *http.Request) {
 	var req shortenRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -130,6 +159,7 @@ func (h *Handler) ShortenURLJSON(w http.ResponseWriter, r *http.Request) {
 	shortURL, err := h.service.ShortenURL(r.Context(), normalizedURL, userID)
 	if err != nil {
 		if errors.Is(err, service.ErrConflict) && shortURL != nil {
+			h.notifyAudit(audit.ActionShorten, normalizedURL, r)
 			fullURL, _ := h.buildFullURL(r, shortURL.ShortURL)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusConflict)
@@ -147,6 +177,8 @@ func (h *Handler) ShortenURLJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.notifyAudit(audit.ActionShorten, normalizedURL, r)
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(shortenResponse{Result: fullURL})
@@ -162,6 +194,7 @@ type batchResponseItem struct {
 	ShortURL      string `json:"short_url"`
 }
 
+// ShortenURLBatch handles POST /api/shorten/batch with a JSON array of {correlation_id, original_url}. Responds with 201 and an array of {correlation_id, short_url} with absolute short links.
 func (h *Handler) ShortenURLBatch(w http.ResponseWriter, r *http.Request) {
 	var req []batchRequestItem
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -216,6 +249,7 @@ func (h *Handler) ShortenURLBatch(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
+// Redirect handles GET /{id}: looks up the short id and responds with 307 Temporary Redirect to the original URL, 404 if missing, or 410 if soft-deleted.
 func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
 	shortID := chi.URLParam(r, "id")
 	if shortID == "" {
@@ -238,6 +272,8 @@ func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.notifyAudit(audit.ActionFollow, url.OriginalURL, r)
+
 	http.Redirect(w, r, url.OriginalURL, http.StatusTemporaryRedirect)
 }
 
@@ -246,6 +282,7 @@ type userURLItem struct {
 	OriginalURL string `json:"original_url"`
 }
 
+// GetUserURLs handles GET /api/user/urls for the current user (valid cookie). Returns 200 and JSON array of {short_url, original_url}, 204 if there are no URLs or no valid cookie yet, or 401 if a cookie was sent but invalid.
 func (h *Handler) GetUserURLs(w http.ResponseWriter, r *http.Request) {
 	if !auth.HadValidCookieFromContext(r.Context()) {
 		if auth.HadCookieInRequestFromContext(r.Context()) {
@@ -281,6 +318,7 @@ func (h *Handler) GetUserURLs(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
+// DeleteUserURLs handles DELETE /api/user/urls with a JSON array of short ids to soft-delete for the current user. Responds with 202 Accepted after enqueueing work; 401 without a valid cookie.
 func (h *Handler) DeleteUserURLs(w http.ResponseWriter, r *http.Request) {
 	if !auth.HadValidCookieFromContext(r.Context()) {
 		w.WriteHeader(http.StatusUnauthorized)
@@ -301,6 +339,7 @@ func (h *Handler) DeleteUserURLs(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
 }
 
+// Router registers all API routes on a new chi.Router: POST /, /api/shorten, /api/shorten/batch, GET/DELETE /api/user/urls, GET /{id}, plus root GET and not-found handlers.
 func (h *Handler) Router() chi.Router {
 	r := chi.NewRouter()
 

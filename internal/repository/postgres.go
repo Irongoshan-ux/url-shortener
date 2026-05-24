@@ -8,19 +8,21 @@ import (
 
 	"github.com/Irongoshan-ux/url-shortener/internal/model"
 	"github.com/Irongoshan-ux/url-shortener/internal/repository/sqlc/db"
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/jackc/pgerrcode"
 )
 
 const pgConstraintUniqueOriginalURL = "urls_original_url_not_deleted_key"
 
+// PostgresRepository implements storage using pgxpool and sqlc-generated queries.
 type PostgresRepository struct {
 	pool *pgxpool.Pool
 	q    *db.Queries
 }
 
+// NewPostgresRepository wraps a connection pool; the pool must remain open for the repository lifetime.
 func NewPostgresRepository(pool *pgxpool.Pool) *PostgresRepository {
 	return &PostgresRepository{
 		pool: pool,

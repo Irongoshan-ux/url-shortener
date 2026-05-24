@@ -9,10 +9,14 @@ import (
 	"github.com/google/uuid"
 )
 
-const CookieName = "user_id"
+const (
+	// CookieName is the HTTP cookie used to store the signed anonymous user id.
+	CookieName = "user_id"
+)
 
 const cookieMaxAge = 3600 * 24 * 30 // 30 days
 
+// ErrInvalidCookie is returned when the cookie value is missing or not a valid signed JWT.
 var ErrInvalidCookie = errors.New("invalid cookie")
 
 type claims struct {
@@ -62,10 +66,12 @@ func verifyAndGetUserID(secret, cookieValue string) (string, error) {
 	return c.UserID, nil
 }
 
+// GenerateUserID returns a new random UUID string for a first-time visitor.
 func GenerateUserID() string {
 	return uuid.New().String()
 }
 
+// GetOrCreateUserID reads CookieName; if missing or invalid, mints a user id and returns a Set-Cookie to persist it.
 func GetOrCreateUserID(r *http.Request, secret string) (userID string, hadValidCookie bool, hadCookieInRequest bool, setCookie *http.Cookie) {
 	cookie, err := r.Cookie(CookieName)
 	if err != nil || cookie == nil || cookie.Value == "" {

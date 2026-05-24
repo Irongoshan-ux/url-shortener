@@ -8,8 +8,8 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
-	_ "github.com/lib/pq"
 	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/lib/pq"
 
 	"github.com/Irongoshan-ux/url-shortener/internal/app"
 	"github.com/Irongoshan-ux/url-shortener/internal/config"
@@ -69,10 +69,11 @@ func main() {
 	}
 
 	svc := service.NewService(repo)
-	httpHandler, err := app.NewHTTPHandler(ctx, cfg, svc, pool, logger)
+	httpHandler, httpCleanup, err := app.NewHTTPHandler(ctx, cfg, svc, pool, logger)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Failed to initialize HTTP handler")
 	}
+	defer httpCleanup()
 
 	server, err := app.NewHTTPServer(cfg, httpHandler)
 	if err != nil {

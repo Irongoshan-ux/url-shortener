@@ -1,3 +1,4 @@
+// Package validation provides strict parsing for user-supplied and configured HTTP(S) URLs.
 package validation
 
 import (
@@ -6,6 +7,7 @@ import (
 	"strings"
 )
 
+// ParseHTTPURL accepts only http/https URLs with a non-empty host.
 func ParseHTTPURL(raw string) (*url.URL, error) {
 	raw = strings.TrimSpace(raw)
 	parsed, err := url.Parse(raw)
@@ -24,6 +26,7 @@ func ParseHTTPURL(raw string) (*url.URL, error) {
 	return parsed, nil
 }
 
+// NormalizeBaseURL trims space and trailing slashes, validates, and returns canonical string for building short links.
 func NormalizeBaseURL(baseURL string) (string, error) {
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	parsed, err := ParseHTTPURL(baseURL)
@@ -32,5 +35,3 @@ func NormalizeBaseURL(baseURL string) (string, error) {
 	}
 	return parsed.String(), nil
 }
-
-

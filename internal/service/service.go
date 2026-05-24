@@ -1,3 +1,4 @@
+// Package service implements URL shortening, batch creation, lookup, listing by user, and asynchronous soft-delete against a Repository.
 package service
 
 import (
@@ -13,6 +14,7 @@ import (
 	"github.com/Irongoshan-ux/url-shortener/internal/repository"
 )
 
+// ErrConflict is returned by ShortenURL when the original URL is already stored (non-deleted); the existing *model.URL is returned with the error for handlers to respond with 409.
 var ErrConflict = errors.New("url already shortened")
 
 const deleteWorkerBatchDelay = 100 * time.Millisecond
@@ -24,6 +26,7 @@ type deleteJob struct {
 	shortIDs []string
 }
 
+// Service coordinates shortening, redirects data access through Repository, and batches delete operations in a background worker.
 type Service struct {
 	repo         Repository
 	maxAttempts  int
@@ -33,12 +36,13 @@ type Service struct {
 	deleteWorker sync.Once
 }
 
+// NewService starts the delete worker goroutine. Apply WithIDGenerator or WithMaxAttempts to customize behavior (tests, collision handling).
 func NewService(repo Repository, opts ...Option) *Service {
 	s := &Service{
-		repo:      repo,
+		repo:        repo,
 		maxAttempts: 10,
-		deleteCh:  make(chan deleteJob, 1024),
-		deleteSem: make(chan struct{}, deleteWriterSemSize),
+		deleteCh:    make(chan deleteJob, 1024),
+		deleteSem:   make(chan struct{}, deleteWriterSemSize),
 	}
 	s.idGen = s.generateShortID
 	for _, opt := range opts {
@@ -98,6 +102,7 @@ func (s *Service) runDeleteWorker() {
 	}
 }
 
+// ShortenURL persists a new short mapping or returns ErrConflict with the existing record if originalURL is already active.
 func (s *Service) ShortenURL(ctx context.Context, originalURL string, userID string) (*model.URL, error) {
 	for attempt := 0; attempt < s.maxAttempts; attempt++ {
 		if err := ctx.Err(); err != nil {
@@ -139,6 +144,7 @@ func (s *Service) ShortenURL(ctx context.Context, originalURL string, userID str
 	return nil, fmt.Errorf("failed to create URL after %d attempts due to short id collisions", s.maxAttempts)
 }
 
+// GetOriginalURL resolves a short id to the stored original URL string.
 func (s *Service) GetOriginalURL(ctx context.Context, shortID string) (string, error) {
 	url, err := s.repo.GetByShortURL(ctx, shortID)
 	if err != nil {
@@ -147,10 +153,12 @@ func (s *Service) GetOriginalURL(ctx context.Context, shortID string) (string, e
 	return url.OriginalURL, nil
 }
 
+// GetURLByShortID returns the full URL record, including deletion flag for HTTP 410 handling.
 func (s *Service) GetURLByShortID(ctx context.Context, shortID string) (*model.URL, error) {
 	return s.repo.GetByShortURL(ctx, shortID)
 }
 
+// DeleteUserURLs enqueues soft-deletes for the given short ids; it returns before the repository is updated.
 func (s *Service) DeleteUserURLs(ctx context.Context, userID string, shortIDs []string) {
 	if len(shortIDs) == 0 {
 		return
@@ -163,22 +171,28 @@ func (s *Service) DeleteUserURLs(ctx context.Context, userID string, shortIDs []
 	}()
 }
 
+// BatchItem is one entry in a batch shorten request (correlation id is echoed in the response).
 type BatchItem struct {
 	CorrelationID string
 	OriginalURL   string
 }
 
+// BatchResult maps a correlation id to the generated or existing short id (not a full URL).
 type BatchResult struct {
 	CorrelationID string
 	ShortURL      string
 }
 
+// ShortenURLBatch creates missing mappings in one pass and fills results in request order.
 func (s *Service) ShortenURLBatch(ctx context.Context, items []BatchItem, userID string) ([]BatchResult, error) {
 	if len(items) == 0 {
 		return nil, nil
 	}
 	results := make([]BatchResult, len(items))
-	type indexCorr struct{ index int; correlationID string }
+	type indexCorr struct {
+		index         int
+		correlationID string
+	}
 	toCreateByURL := make(map[string][]indexCorr)
 	var uniqueOrder []string
 
@@ -224,6 +238,7 @@ func (s *Service) ShortenURLBatch(ctx context.Context, items []BatchItem, userID
 	return results, nil
 }
 
+// GetUserURLs lists all non-deleted URLs owned by userID.
 func (s *Service) GetUserURLs(ctx context.Context, userID string) ([]*model.URL, error) {
 	return s.repo.GetByUserID(ctx, userID)
 }
@@ -233,7 +248,7 @@ func (s *Service) generateShortID() (string, error) {
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
-
-	encoded := base64.URLEncoding.EncodeToString(b)
-	return encoded[:8], nil
+	var enc [8]byte
+	base64.RawURLEncoding.Encode(enc[:], b)
+	return string(enc[:]), nil
 }

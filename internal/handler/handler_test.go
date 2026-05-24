@@ -37,46 +37,46 @@ func TestHandler_ShortenURL(t *testing.T) {
 		expectedOrigURL string
 	}{
 		{
-			name:   "successful shorten",
-			method: http.MethodPost,
-			body:   "https://example.com",
+			name:            "successful shorten",
+			method:          http.MethodPost,
+			body:            "https://example.com",
 			expectedStatus:  http.StatusCreated,
 			expectedOrigURL: "https://example.com",
 		},
 		{
-			name:   "empty body",
-			method: http.MethodPost,
-			body:   "",
+			name:           "empty body",
+			method:         http.MethodPost,
+			body:           "",
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:   "invalid URL format",
-			method: http.MethodPost,
-			body:   "not a url",
+			name:           "invalid URL format",
+			method:         http.MethodPost,
+			body:           "not a url",
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:   "URL without scheme",
-			method: http.MethodPost,
-			body:   "example.com",
+			name:           "URL without scheme",
+			method:         http.MethodPost,
+			body:           "example.com",
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:   "URL without host",
-			method: http.MethodPost,
-			body:   "https://",
+			name:           "URL without host",
+			method:         http.MethodPost,
+			body:           "https://",
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:   "invalid scheme",
-			method: http.MethodPost,
-			body:   "ftp://example.com",
+			name:           "invalid scheme",
+			method:         http.MethodPost,
+			body:           "ftp://example.com",
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:   "service error",
-			method: http.MethodPost,
-			body:   "https://example.com",
+			name:           "service error",
+			method:         http.MethodPost,
+			body:           "https://example.com",
 			expectedStatus: http.StatusInternalServerError,
 		},
 		{
@@ -112,7 +112,7 @@ func TestHandler_ShortenURL(t *testing.T) {
 			default:
 			}
 
-			h := NewHandler(svc, "", zerolog.Nop())
+			h := NewHandler(svc, "", zerolog.Nop(), nil)
 
 			req := httptest.NewRequest(tt.method, "/", strings.NewReader(tt.body))
 			req = req.WithContext(withTestUser(req.Context(), "test-user-id"))
@@ -150,9 +150,9 @@ func TestHandler_Redirect(t *testing.T) {
 		expectedLocation string
 	}{
 		{
-			name:   "successful redirect",
-			method: http.MethodGet,
-			path:   "abc123",
+			name:             "successful redirect",
+			method:           http.MethodGet,
+			path:             "abc123",
 			expectedStatus:   http.StatusTemporaryRedirect,
 			expectedLocation: "https://example.com",
 		},
@@ -164,9 +164,9 @@ func TestHandler_Redirect(t *testing.T) {
 			expectedLocation: "",
 		},
 		{
-			name:   "wrong method",
-			method: http.MethodPost,
-			path:   "abc123",
+			name:           "wrong method",
+			method:         http.MethodPost,
+			path:           "abc123",
 			expectedStatus: http.StatusBadRequest,
 		},
 	}
@@ -186,7 +186,7 @@ func TestHandler_Redirect(t *testing.T) {
 			default:
 			}
 
-			h := NewHandler(svc, "", zerolog.Nop())
+			h := NewHandler(svc, "", zerolog.Nop(), nil)
 
 			r := chi.NewRouter()
 			r.Mount("/", h.Router())
@@ -277,7 +277,7 @@ func TestHandler_ShortenURLJSON(t *testing.T) {
 			svc := mocks.NewMockURLService(ctrl)
 			tt.setupMock(svc)
 
-			h := NewHandler(svc, tt.baseURL, zerolog.Nop())
+			h := NewHandler(svc, tt.baseURL, zerolog.Nop(), nil)
 
 			req := httptest.NewRequest(http.MethodPost, "/api/shorten", strings.NewReader(tt.body))
 			req = req.WithContext(withTestUser(req.Context(), "test-user-id"))
@@ -320,7 +320,7 @@ func TestHandler_ShortenURLBatch(t *testing.T) {
 				{CorrelationID: "1", ShortURL: "id1"},
 				{CorrelationID: "2", ShortURL: "id2"},
 			}, nil)
-		h := NewHandler(svc, "http://localhost:8080", zerolog.Nop())
+		h := NewHandler(svc, "http://localhost:8080", zerolog.Nop(), nil)
 		body := `[{"correlation_id":"1","original_url":"https://a.com"},{"correlation_id":"2","original_url":"https://b.com"}]`
 		req := httptest.NewRequest(http.MethodPost, "/api/shorten/batch", strings.NewReader(body))
 		req = req.WithContext(withTestUser(req.Context(), "test-user-id"))
@@ -348,7 +348,7 @@ func TestHandler_ShortenURLBatch(t *testing.T) {
 	t.Run("empty batch", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
-		h := NewHandler(mocks.NewMockURLService(ctrl), "", zerolog.Nop())
+		h := NewHandler(mocks.NewMockURLService(ctrl), "", zerolog.Nop(), nil)
 		req := httptest.NewRequest(http.MethodPost, "/api/shorten/batch", strings.NewReader("[]"))
 		req = req.WithContext(withTestUser(req.Context(), "test-user-id"))
 		req.Header.Set("Content-Type", "application/json")
@@ -363,7 +363,7 @@ func TestHandler_ShortenURLBatch(t *testing.T) {
 	t.Run("invalid JSON", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
-		h := NewHandler(mocks.NewMockURLService(ctrl), "", zerolog.Nop())
+		h := NewHandler(mocks.NewMockURLService(ctrl), "", zerolog.Nop(), nil)
 		req := httptest.NewRequest(http.MethodPost, "/api/shorten/batch", strings.NewReader("not json"))
 		req = req.WithContext(withTestUser(req.Context(), "test-user-id"))
 		req.Header.Set("Content-Type", "application/json")
@@ -386,9 +386,9 @@ func TestHandler_Root(t *testing.T) {
 		expectedStatus int
 	}{
 		{
-			name:   "GET / - should return error",
-			method: http.MethodGet,
-			path:   "",
+			name:           "GET / - should return error",
+			method:         http.MethodGet,
+			path:           "",
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
@@ -404,43 +404,43 @@ func TestHandler_Root(t *testing.T) {
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:   "GET /{id} - should redirect",
-			method: http.MethodGet,
-			path:   "abc123",
+			name:           "GET /{id} - should redirect",
+			method:         http.MethodGet,
+			path:           "abc123",
 			expectedStatus: http.StatusTemporaryRedirect,
 		},
 		{
-			name:   "POST / - should shorten",
-			method: http.MethodPost,
-			path:   "",
-			body:   "https://example.com",
+			name:           "POST / - should shorten",
+			method:         http.MethodPost,
+			path:           "",
+			body:           "https://example.com",
 			expectedStatus: http.StatusCreated,
 		},
 		{
-			name:   "POST /{id} - should return error",
-			method: http.MethodPost,
-			path:   "abc123",
-			body:   "https://example.com",
+			name:           "POST /{id} - should return error",
+			method:         http.MethodPost,
+			path:           "abc123",
+			body:           "https://example.com",
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:   "POST / without body - should return error",
-			method: http.MethodPost,
-			path:   "",
-			body:   "",
+			name:           "POST / without body - should return error",
+			method:         http.MethodPost,
+			path:           "",
+			body:           "",
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:   "POST /smth - should return error",
-			method: http.MethodPost,
-			path:   "smth",
-			body:   "http://test.com",
+			name:           "POST /smth - should return error",
+			method:         http.MethodPost,
+			path:           "smth",
+			body:           "http://test.com",
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:   "PUT / - should return error",
-			method: http.MethodPut,
-			path:   "",
+			name:           "PUT / - should return error",
+			method:         http.MethodPut,
+			path:           "",
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
@@ -458,7 +458,7 @@ func TestHandler_Root(t *testing.T) {
 			defer ctrl.Finish()
 
 			svc := mocks.NewMockURLService(ctrl)
-			h := NewHandler(svc, "", zerolog.Nop())
+			h := NewHandler(svc, "", zerolog.Nop(), nil)
 
 			r := chi.NewRouter()
 			r.Mount("/", h.Router())
