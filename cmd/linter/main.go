@@ -1,9 +1,14 @@
 package main
 
 import (
-	"golang.org/x/tools/go/analysis/singlechecker"
+	"github.com/Irongoshan-ux/url-shortener/cmd/linter/osexit"
+	"github.com/Irongoshan-ux/url-shortener/cmd/linter/paniccheck"
+	"golang.org/x/tools/go/analysis/multichecker"
 )
 
 func main() {
-	singlechecker.Main(analyzer)
+	multichecker.Main(
+		paniccheck.Analyzer,
+		osexit.Analyzer,
+	)
 }
