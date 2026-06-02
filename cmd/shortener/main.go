@@ -31,6 +31,8 @@ func runMigrations(dsn string, migrationsPath string) error {
 }
 
 func main() {
+	printBuildInfo()
+
 	ctx := context.Background()
 	logger := zerolog.New(os.Stdout).With().Timestamp().Logger()
 
