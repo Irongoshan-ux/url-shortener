@@ -47,10 +47,15 @@ func TestServeHTTPS(t *testing.T) {
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		resp, err = client.Get("https://" + addr + "/ping")
-		if err == nil {
-			break
+		if err != nil {
+			if resp != nil {
+				_, _ = io.Copy(io.Discard, resp.Body)
+				_ = resp.Body.Close()
+			}
+			time.Sleep(10 * time.Millisecond)
+			continue
 		}
-		time.Sleep(10 * time.Millisecond)
+		break
 	}
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -90,10 +95,15 @@ func TestServeHTTP(t *testing.T) {
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		resp, err = client.Get("http://" + addr + "/ping")
-		if err == nil {
-			break
+		if err != nil {
+			if resp != nil {
+				_, _ = io.Copy(io.Discard, resp.Body)
+				_ = resp.Body.Close()
+			}
+			time.Sleep(10 * time.Millisecond)
+			continue
 		}
-		time.Sleep(10 * time.Millisecond)
+		break
 	}
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -132,18 +142,28 @@ func TestRunGracefulShutdown(t *testing.T) {
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		resp, err = client.Get("http://" + addr + "/ping")
-		if err == nil {
-			break
+		if err != nil {
+			if resp != nil {
+				_, _ = io.Copy(io.Discard, resp.Body)
+				_ = resp.Body.Close()
+			}
+			time.Sleep(10 * time.Millisecond)
+			continue
 		}
-		time.Sleep(10 * time.Millisecond)
+		break
 	}
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
+	_, _ = io.Copy(io.Discard, resp.Body)
 	require.NoError(t, resp.Body.Close())
 
 	cancel()
 	require.NoError(t, <-errCh)
 
-	_, err = client.Get("http://" + addr + "/ping")
+	resp, err = client.Get("http://" + addr + "/ping")
+	if resp != nil {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		require.NoError(t, resp.Body.Close())
+	}
 	require.Error(t, err)
 }
