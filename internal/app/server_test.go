@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"crypto/tls"
 	"io"
 	"net"
@@ -101,4 +102,48 @@ func TestServeHTTP(t *testing.T) {
 
 	require.NoError(t, srv.Close())
 	require.ErrorIs(t, <-errCh, http.ErrServerClosed)
+}
+
+func TestRunGracefulShutdown(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := ln.Addr().String()
+	require.NoError(t, ln.Close())
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/ping", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: mux,
+	}
+	cfg := &config.Config{EnableHTTPS: false}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- Run(ctx, cfg, srv)
+	}()
+
+	client := &http.Client{Timeout: 2 * time.Second}
+	var resp *http.Response
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		resp, err = client.Get("http://" + addr + "/ping")
+		if err == nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	cancel()
+	require.NoError(t, <-errCh)
+
+	_, err = client.Get("http://" + addr + "/ping")
+	require.Error(t, err)
 }

@@ -127,3 +127,10 @@ func (f *FileRepository) DeleteByShortURLs(ctx context.Context, userID string, s
 	f.mu.Unlock()
 	return err
 }
+
+// Close flushes in-memory data to the storage file.
+func (f *FileRepository) Close() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.save()
+}
