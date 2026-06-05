@@ -14,6 +14,7 @@ type Config struct {
 	FileStoragePath string `env:"FILE_STORAGE_PATH"`
 	DatabaseDSN     string `env:"DATABASE_DSN"`
 	CookieSecret    string `env:"COOKIE_SECRET"`
+	EnableHTTPS     bool   `env:"ENABLE_HTTPS"`
 	AuditFile       string `env:"AUDIT_FILE"`
 	AuditURL        string `env:"AUDIT_URL"`
 }
@@ -26,7 +27,7 @@ func Load() (*Config, error) {
 	flag.StringVar(&cfg.BaseURL, "b", "http://localhost:8080", "Base URL for shortened URLs")
 	flag.StringVar(&cfg.FileStoragePath, "f", "", "Path to file for URL storage (JSON)")
 	flag.StringVar(&cfg.DatabaseDSN, "d", "", "PostgreSQL connection string (DATABASE_DSN)")
-	flag.StringVar(&cfg.CookieSecret, "s", "", "Secret for signing user cookie (COOKIE_SECRET)")
+	flag.BoolVar(&cfg.EnableHTTPS, "s", false, "enable HTTPS")
 	flag.StringVar(&cfg.AuditFile, "audit-file", "", "Append-only audit log file path (AUDIT_FILE)")
 	flag.StringVar(&cfg.AuditURL, "audit-url", "", "Remote audit collector POST URL (AUDIT_URL)")
 	flag.Parse()

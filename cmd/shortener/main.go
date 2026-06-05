@@ -82,9 +82,9 @@ func main() {
 		logger.Fatal().Err(err).Msg("Failed to initialize HTTP server")
 	}
 
-	logger.Info().Str("server", cfg.ServerAddress).Msg("Server starting")
+	logger.Info().Str("server", cfg.ServerAddress).Bool("https", cfg.EnableHTTPS).Msg("Server starting")
 	logger.Info().Str("base_url", cfg.BaseURL).Msg("Base URL")
-	if err := server.ListenAndServe(); err != nil {
+	if err := app.Serve(cfg, server); err != nil {
 		logger.Fatal().Err(err).Msg("Server failed to start")
 	}
 }
