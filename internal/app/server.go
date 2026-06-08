@@ -34,10 +34,10 @@ func NewHTTPServer(cfg *config.Config, h http.Handler) (*http.Server, error) {
 }
 
 // Run starts the server and shuts it down gracefully when ctx is cancelled.
-func Run(ctx context.Context, cfg *config.Config, srv *http.Server) error {
+func Run(ctx context.Context, cfg *config.Config, srv *http.Server, ln net.Listener) error {
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- Serve(cfg, srv)
+		errCh <- Serve(cfg, srv, ln)
 	}()
 
 	select {

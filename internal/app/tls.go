@@ -17,8 +17,12 @@ import (
 )
 
 // Serve starts srv as HTTP or HTTPS depending on cfg.EnableHTTPS.
-func Serve(cfg *config.Config, srv *http.Server) error {
+// When ln is non-nil, srv.Serve uses the provided listener instead of binding srv.Addr.
+func Serve(cfg *config.Config, srv *http.Server, ln net.Listener) error {
 	if !cfg.EnableHTTPS {
+		if ln != nil {
+			return srv.Serve(ln)
+		}
 		return srv.ListenAndServe()
 	}
 
@@ -27,10 +31,15 @@ func Serve(cfg *config.Config, srv *http.Server) error {
 		return err
 	}
 
-	listener, err := tls.Listen("tcp", srv.Addr, &tls.Config{
+	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{cert},
 		MinVersion:   tls.VersionTLS12,
-	})
+	}
+	if ln != nil {
+		return srv.Serve(tls.NewListener(ln, tlsConfig))
+	}
+
+	listener, err := tls.Listen("tcp", srv.Addr, tlsConfig)
 	if err != nil {
 		return err
 	}

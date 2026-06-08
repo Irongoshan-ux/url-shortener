@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/ilyakaznacheev/cleanenv"
 )
@@ -30,6 +31,9 @@ func defaultConfig() Config {
 	}
 }
 
+// resolveConfigPath and withoutConfigPathFlags handle -c/-config separately from
+// application flags: the path is a meta-flag (not a Config field) and must be
+// known before merging the JSON file, which precedes flag overrides.
 func resolveConfigPath(args []string) string {
 	fs := flag.NewFlagSet("config", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -41,6 +45,27 @@ func resolveConfigPath(args []string) string {
 		return path
 	}
 	return os.Getenv("CONFIG")
+}
+
+func withoutConfigPathFlags(args []string) []string {
+	if len(args) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "-c", arg == "-config":
+			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				i++
+			}
+		case strings.HasPrefix(arg, "-c="), strings.HasPrefix(arg, "-config="):
+			// skip
+		default:
+			out = append(out, arg)
+		}
+	}
+	return out
 }
 
 func loadConfigFile(path string, cfg *Config) error {
@@ -71,9 +96,6 @@ func load(fs *flag.FlagSet, args []string) (*Config, error) {
 		}
 	}
 
-	var configPath string
-	fs.StringVar(&configPath, "c", "", "JSON config file path (CONFIG)")
-	fs.StringVar(&configPath, "config", "", "JSON config file path (CONFIG)")
 	fs.StringVar(&cfg.ServerAddress, "a", cfg.ServerAddress, "HTTP server address")
 	fs.StringVar(&cfg.BaseURL, "b", cfg.BaseURL, "Base URL for shortened URLs")
 	fs.StringVar(&cfg.FileStoragePath, "f", cfg.FileStoragePath, "Path to file for URL storage (JSON)")
@@ -81,7 +103,7 @@ func load(fs *flag.FlagSet, args []string) (*Config, error) {
 	fs.BoolVar(&cfg.EnableHTTPS, "s", cfg.EnableHTTPS, "enable HTTPS")
 	fs.StringVar(&cfg.AuditFile, "audit-file", cfg.AuditFile, "Append-only audit log file path (AUDIT_FILE)")
 	fs.StringVar(&cfg.AuditURL, "audit-url", cfg.AuditURL, "Remote audit collector POST URL (AUDIT_URL)")
-	if err := fs.Parse(args); err != nil {
+	if err := fs.Parse(withoutConfigPathFlags(args)); err != nil {
 		return nil, err
 	}
 

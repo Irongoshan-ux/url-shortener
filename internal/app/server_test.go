@@ -17,23 +17,19 @@ func TestServeHTTPS(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	addr := ln.Addr().String()
-	require.NoError(t, ln.Close())
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ping", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	srv := &http.Server{
-		Addr:    addr,
-		Handler: mux,
-	}
+	srv := &http.Server{Handler: mux}
 
 	cfg := &config.Config{EnableHTTPS: true}
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- Serve(cfg, srv)
+		errCh <- Serve(cfg, srv, ln)
 	}()
 
 	client := &http.Client{
@@ -70,23 +66,19 @@ func TestServeHTTP(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	addr := ln.Addr().String()
-	require.NoError(t, ln.Close())
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ping", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	srv := &http.Server{
-		Addr:    addr,
-		Handler: mux,
-	}
+	srv := &http.Server{Handler: mux}
 
 	cfg := &config.Config{EnableHTTPS: false}
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- Serve(cfg, srv)
+		errCh <- Serve(cfg, srv, ln)
 	}()
 
 	client := &http.Client{Timeout: 2 * time.Second}
@@ -118,23 +110,19 @@ func TestRunGracefulShutdown(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	addr := ln.Addr().String()
-	require.NoError(t, ln.Close())
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ping", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	srv := &http.Server{
-		Addr:    addr,
-		Handler: mux,
-	}
+	srv := &http.Server{Handler: mux}
 	cfg := &config.Config{EnableHTTPS: false}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- Run(ctx, cfg, srv)
+		errCh <- Run(ctx, cfg, srv, ln)
 	}()
 
 	client := &http.Client{Timeout: 2 * time.Second}

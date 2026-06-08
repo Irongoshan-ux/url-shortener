@@ -98,7 +98,7 @@ func main() {
 
 	logger.Info().Str("server", cfg.ServerAddress).Bool("https", cfg.EnableHTTPS).Msg("Server starting")
 	logger.Info().Str("base_url", cfg.BaseURL).Msg("Base URL")
-	if err := app.Run(ctx, cfg, server); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	if err := app.Run(ctx, cfg, server, nil); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		logger.Fatal().Err(err).Msg("Server failed")
 	}
 	logger.Info().Msg("Server stopped gracefully")
