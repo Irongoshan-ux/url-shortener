@@ -2,8 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
@@ -33,7 +37,9 @@ func runMigrations(dsn string, migrationsPath string) error {
 func main() {
 	printBuildInfo()
 
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+	defer stop()
+
 	logger := zerolog.New(os.Stdout).With().Timestamp().Logger()
 
 	cfg, err := config.Load()
@@ -70,6 +76,14 @@ func main() {
 		logger.Info().Str("storage", "memory").Msg("Using in-memory storage")
 	}
 
+	if closer, ok := repo.(interface{ Close() error }); ok {
+		defer func() {
+			if err := closer.Close(); err != nil {
+				logger.Error().Err(err).Msg("Failed to close storage")
+			}
+		}()
+	}
+
 	svc := service.NewService(repo)
 	httpHandler, httpCleanup, err := app.NewHTTPHandler(ctx, cfg, svc, pool, logger)
 	if err != nil {
@@ -82,9 +96,10 @@ func main() {
 		logger.Fatal().Err(err).Msg("Failed to initialize HTTP server")
 	}
 
-	logger.Info().Str("server", cfg.ServerAddress).Msg("Server starting")
+	logger.Info().Str("server", cfg.ServerAddress).Bool("https", cfg.EnableHTTPS).Msg("Server starting")
 	logger.Info().Str("base_url", cfg.BaseURL).Msg("Base URL")
-	if err := server.ListenAndServe(); err != nil {
-		logger.Fatal().Err(err).Msg("Server failed to start")
+	if err := app.Run(ctx, cfg, server, nil); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		logger.Fatal().Err(err).Msg("Server failed")
 	}
+	logger.Info().Msg("Server stopped gracefully")
 }
