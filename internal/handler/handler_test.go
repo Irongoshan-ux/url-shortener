@@ -112,7 +112,7 @@ func TestHandler_ShortenURL(t *testing.T) {
 			default:
 			}
 
-			h := NewHandler(svc, "", zerolog.Nop(), nil)
+			h := NewHandler(svc, "", zerolog.Nop(), nil, "")
 
 			req := httptest.NewRequest(tt.method, "/", strings.NewReader(tt.body))
 			req = req.WithContext(withTestUser(req.Context(), "test-user-id"))
@@ -186,7 +186,7 @@ func TestHandler_Redirect(t *testing.T) {
 			default:
 			}
 
-			h := NewHandler(svc, "", zerolog.Nop(), nil)
+			h := NewHandler(svc, "", zerolog.Nop(), nil, "")
 
 			r := chi.NewRouter()
 			r.Mount("/", h.Router())
@@ -277,7 +277,7 @@ func TestHandler_ShortenURLJSON(t *testing.T) {
 			svc := mocks.NewMockURLService(ctrl)
 			tt.setupMock(svc)
 
-			h := NewHandler(svc, tt.baseURL, zerolog.Nop(), nil)
+			h := NewHandler(svc, tt.baseURL, zerolog.Nop(), nil, "")
 
 			req := httptest.NewRequest(http.MethodPost, "/api/shorten", strings.NewReader(tt.body))
 			req = req.WithContext(withTestUser(req.Context(), "test-user-id"))
@@ -320,7 +320,7 @@ func TestHandler_ShortenURLBatch(t *testing.T) {
 				{CorrelationID: "1", ShortURL: "id1"},
 				{CorrelationID: "2", ShortURL: "id2"},
 			}, nil)
-		h := NewHandler(svc, "http://localhost:8080", zerolog.Nop(), nil)
+		h := NewHandler(svc, "http://localhost:8080", zerolog.Nop(), nil, "")
 		body := `[{"correlation_id":"1","original_url":"https://a.com"},{"correlation_id":"2","original_url":"https://b.com"}]`
 		req := httptest.NewRequest(http.MethodPost, "/api/shorten/batch", strings.NewReader(body))
 		req = req.WithContext(withTestUser(req.Context(), "test-user-id"))
@@ -348,7 +348,7 @@ func TestHandler_ShortenURLBatch(t *testing.T) {
 	t.Run("empty batch", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
-		h := NewHandler(mocks.NewMockURLService(ctrl), "", zerolog.Nop(), nil)
+		h := NewHandler(mocks.NewMockURLService(ctrl), "", zerolog.Nop(), nil, "")
 		req := httptest.NewRequest(http.MethodPost, "/api/shorten/batch", strings.NewReader("[]"))
 		req = req.WithContext(withTestUser(req.Context(), "test-user-id"))
 		req.Header.Set("Content-Type", "application/json")
@@ -363,7 +363,7 @@ func TestHandler_ShortenURLBatch(t *testing.T) {
 	t.Run("invalid JSON", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
-		h := NewHandler(mocks.NewMockURLService(ctrl), "", zerolog.Nop(), nil)
+		h := NewHandler(mocks.NewMockURLService(ctrl), "", zerolog.Nop(), nil, "")
 		req := httptest.NewRequest(http.MethodPost, "/api/shorten/batch", strings.NewReader("not json"))
 		req = req.WithContext(withTestUser(req.Context(), "test-user-id"))
 		req.Header.Set("Content-Type", "application/json")
@@ -458,7 +458,7 @@ func TestHandler_Root(t *testing.T) {
 			defer ctrl.Finish()
 
 			svc := mocks.NewMockURLService(ctrl)
-			h := NewHandler(svc, "", zerolog.Nop(), nil)
+			h := NewHandler(svc, "", zerolog.Nop(), nil, "")
 
 			r := chi.NewRouter()
 			r.Mount("/", h.Router())

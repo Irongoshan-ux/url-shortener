@@ -22,6 +22,7 @@ type Config struct {
 	EnableHTTPS     bool   `json:"enable_https" env:"ENABLE_HTTPS"`
 	AuditFile       string `json:"audit_file" env:"AUDIT_FILE"`
 	AuditURL        string `json:"audit_url" env:"AUDIT_URL"`
+	TrustedSubnet   string `json:"trusted_subnet" env:"TRUSTED_SUBNET"`
 }
 
 func defaultConfig() Config {
@@ -103,6 +104,7 @@ func load(fs *flag.FlagSet, args []string) (*Config, error) {
 	fs.BoolVar(&cfg.EnableHTTPS, "s", cfg.EnableHTTPS, "enable HTTPS")
 	fs.StringVar(&cfg.AuditFile, "audit-file", cfg.AuditFile, "Append-only audit log file path (AUDIT_FILE)")
 	fs.StringVar(&cfg.AuditURL, "audit-url", cfg.AuditURL, "Remote audit collector POST URL (AUDIT_URL)")
+	fs.StringVar(&cfg.TrustedSubnet, "t", cfg.TrustedSubnet, "Trusted subnet CIDR for /api/internal/stats (TRUSTED_SUBNET)")
 	if err := fs.Parse(withoutConfigPathFlags(args)); err != nil {
 		return nil, err
 	}

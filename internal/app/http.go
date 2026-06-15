@@ -96,7 +96,7 @@ func NewHTTPHandler(ctx context.Context, cfg *config.Config, svc *service.Servic
 
 	r.Get("/ping", PingHandler(pool, log))
 
-	h := handler.NewHandler(svc, baseURL, log, auditSubject)
+	h := handler.NewHandler(svc, baseURL, log, auditSubject, cfg.TrustedSubnet)
 	r.Mount("/", h.Router())
 
 	return r, auditCleanup, nil

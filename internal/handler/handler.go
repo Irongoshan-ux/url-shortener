@@ -28,21 +28,28 @@ type shortenResponse struct {
 	Result string `json:"result"`
 }
 
+type statsResponse struct {
+	URLs  int `json:"urls"`
+	Users int `json:"users"`
+}
+
 // Handler serves HTTP requests using URLService. baseURL is used to build absolute short links in responses; if empty, scheme and host are taken from each request.
 type Handler struct {
-	service URLService
-	baseURL string
-	log     zerolog.Logger
-	audit   *audit.Subject
+	service       URLService
+	baseURL       string
+	log           zerolog.Logger
+	audit         *audit.Subject
+	trustedSubnet string
 }
 
 // NewHandler constructs a Handler. auditSubject may be nil; log is used for server-side errors and diagnostics.
-func NewHandler(svc URLService, baseURL string, log zerolog.Logger, auditSubject *audit.Subject) *Handler {
+func NewHandler(svc URLService, baseURL string, log zerolog.Logger, auditSubject *audit.Subject, trustedSubnet string) *Handler {
 	return &Handler{
-		service: svc,
-		baseURL: baseURL,
-		log:     log,
-		audit:   auditSubject,
+		service:       svc,
+		baseURL:       baseURL,
+		log:           log,
+		audit:         auditSubject,
+		trustedSubnet: trustedSubnet,
 	}
 }
 
@@ -339,6 +346,24 @@ func (h *Handler) DeleteUserURLs(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
 }
 
+// GetStats handles GET /api/internal/stats for clients in the configured trusted subnet.
+func (h *Handler) GetStats(w http.ResponseWriter, r *http.Request) {
+	if !trustedSubnetAllowed(h.trustedSubnet, r) {
+		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		return
+	}
+	urls, users, err := h.service.GetStats(r.Context())
+	if err != nil {
+		h.log.Error().Err(err).Msg("get stats failed")
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(statsResponse{URLs: urls, Users: users}); err != nil {
+		h.log.Error().Err(err).Msg("encode stats response failed")
+	}
+}
+
 // Router registers all API routes on a new chi.Router: POST /, /api/shorten, /api/shorten/batch, GET/DELETE /api/user/urls, GET /{id}, plus root GET and not-found handlers.
 func (h *Handler) Router() chi.Router {
 	r := chi.NewRouter()
@@ -348,6 +373,7 @@ func (h *Handler) Router() chi.Router {
 	r.Post("/api/shorten/batch", h.ShortenURLBatch)
 	r.Get("/api/user/urls", h.GetUserURLs)
 	r.Delete("/api/user/urls", h.DeleteUserURLs)
+	r.Get("/api/internal/stats", h.GetStats)
 
 	r.Get("/{id}", h.Redirect)
 

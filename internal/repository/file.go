@@ -128,6 +128,14 @@ func (f *FileRepository) DeleteByShortURLs(ctx context.Context, userID string, s
 	return err
 }
 
+func (f *FileRepository) CountURLs(ctx context.Context) (int, error) {
+	return f.mem.CountURLs(ctx)
+}
+
+func (f *FileRepository) CountUsers(ctx context.Context) (int, error) {
+	return f.mem.CountUsers(ctx)
+}
+
 // Close flushes in-memory data to the storage file.
 func (f *FileRepository) Close() error {
 	f.mu.Lock()

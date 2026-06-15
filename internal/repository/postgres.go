@@ -159,3 +159,19 @@ func (r *PostgresRepository) DeleteByShortURLs(ctx context.Context, userID strin
 	}
 	return nil
 }
+
+func (r *PostgresRepository) CountURLs(ctx context.Context) (int, error) {
+	count, err := r.q.CountURLs(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("count urls: %w", err)
+	}
+	return int(count), nil
+}
+
+func (r *PostgresRepository) CountUsers(ctx context.Context) (int, error) {
+	count, err := r.q.CountUsers(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("count users: %w", err)
+	}
+	return int(count), nil
+}

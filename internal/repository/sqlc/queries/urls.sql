@@ -25,3 +25,9 @@ WHERE user_id = $1 AND is_deleted = false;
 UPDATE urls
 SET is_deleted = true
 WHERE user_id = $1 AND short_url = ANY($2::text[]);
+
+-- name: CountURLs :one
+SELECT COUNT(*)::int FROM urls WHERE is_deleted = false;
+
+-- name: CountUsers :one
+SELECT COUNT(DISTINCT user_id)::int FROM urls WHERE is_deleted = false AND user_id <> '';

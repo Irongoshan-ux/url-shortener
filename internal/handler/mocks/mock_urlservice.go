@@ -69,6 +69,22 @@ func (mr *MockURLServiceMockRecorder) GetOriginalURL(ctx, shortID any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetOriginalURL", reflect.TypeOf((*MockURLService)(nil).GetOriginalURL), ctx, shortID)
 }
 
+// GetStats mocks base method.
+func (m *MockURLService) GetStats(ctx context.Context) (int, int, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetStats", ctx)
+	ret0, _ := ret[0].(int)
+	ret1, _ := ret[1].(int)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// GetStats indicates an expected call of GetStats.
+func (mr *MockURLServiceMockRecorder) GetStats(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetStats", reflect.TypeOf((*MockURLService)(nil).GetStats), ctx)
+}
+
 // GetURLByShortID mocks base method.
 func (m *MockURLService) GetURLByShortID(ctx context.Context, shortID string) (*model.URL, error) {
 	m.ctrl.T.Helper()

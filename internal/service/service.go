@@ -243,6 +243,19 @@ func (s *Service) GetUserURLs(ctx context.Context, userID string) ([]*model.URL,
 	return s.repo.GetByUserID(ctx, userID)
 }
 
+// GetStats returns counts of active shortened URLs and distinct users.
+func (s *Service) GetStats(ctx context.Context) (urls, users int, err error) {
+	urls, err = s.repo.CountURLs(ctx)
+	if err != nil {
+		return 0, 0, fmt.Errorf("count urls: %w", err)
+	}
+	users, err = s.repo.CountUsers(ctx)
+	if err != nil {
+		return 0, 0, fmt.Errorf("count users: %w", err)
+	}
+	return urls, users, nil
+}
+
 func (s *Service) generateShortID() (string, error) {
 	b := make([]byte, 6)
 	if _, err := rand.Read(b); err != nil {

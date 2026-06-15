@@ -14,6 +14,8 @@ type Repository interface {
 	GetByOriginalURL(ctx context.Context, originalURL string) (*model.URL, error)
 	GetByUserID(ctx context.Context, userID string) ([]*model.URL, error)
 	DeleteByShortURLs(ctx context.Context, userID string, shortIDs []string) error
+	CountURLs(ctx context.Context) (int, error)
+	CountUsers(ctx context.Context) (int, error)
 }
 
 //go:generate go run go.uber.org/mock/mockgen -source=repository.go -destination=mocks/mock_repository.go -package=mocks
