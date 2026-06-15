@@ -12,8 +12,6 @@ import (
 	"github.com/Irongoshan-ux/url-shortener/internal/auth"
 	"github.com/Irongoshan-ux/url-shortener/internal/config"
 	"github.com/Irongoshan-ux/url-shortener/internal/handler"
-	"github.com/Irongoshan-ux/url-shortener/internal/service"
-	"github.com/Irongoshan-ux/url-shortener/internal/validation"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -74,12 +72,8 @@ func buildAuditSubject(cfg *config.Config, log zerolog.Logger) (*audit.Subject, 
 
 // NewHTTPHandler builds the root chi router: gzip, logging, recovery, auth cookie, /ping and handler routes.
 // The returned cleanup closes audit sinks (e.g. audit file); call it on shutdown, typically with defer in main.
-func NewHTTPHandler(ctx context.Context, cfg *config.Config, svc *service.Service, pool *pgxpool.Pool, log zerolog.Logger) (http.Handler, func(), error) {
+func NewHTTPHandler(ctx context.Context, cfg *config.Config, facade *handler.ShortenerFacade, pool *pgxpool.Pool, log zerolog.Logger) (http.Handler, func(), error) {
 	_ = ctx
-	baseURL, err := validation.NormalizeBaseURL(cfg.BaseURL)
-	if err != nil {
-		return nil, func() {}, err
-	}
 
 	auditSubject, auditCleanup, err := buildAuditSubject(cfg, log)
 	if err != nil {
@@ -96,7 +90,7 @@ func NewHTTPHandler(ctx context.Context, cfg *config.Config, svc *service.Servic
 
 	r.Get("/ping", PingHandler(pool, log))
 
-	h := handler.NewHandler(svc, baseURL, log, auditSubject, cfg.TrustedSubnet)
+	h := handler.NewHandler(facade, log, auditSubject, cfg.TrustedSubnet)
 	r.Mount("/", h.Router())
 
 	return r, auditCleanup, nil

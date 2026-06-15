@@ -17,8 +17,10 @@ import (
 
 	"github.com/Irongoshan-ux/url-shortener/internal/app"
 	"github.com/Irongoshan-ux/url-shortener/internal/config"
+	"github.com/Irongoshan-ux/url-shortener/internal/handler"
 	"github.com/Irongoshan-ux/url-shortener/internal/repository"
 	"github.com/Irongoshan-ux/url-shortener/internal/service"
+	"github.com/Irongoshan-ux/url-shortener/internal/validation"
 	"github.com/rs/zerolog"
 )
 
@@ -85,7 +87,14 @@ func main() {
 	}
 
 	svc := service.NewService(repo)
-	httpHandler, httpCleanup, err := app.NewHTTPHandler(ctx, cfg, svc, pool, logger)
+
+	baseURL, err := validation.NormalizeBaseURL(cfg.BaseURL)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("Failed to normalize base URL")
+	}
+	facade := handler.NewShortenerFacade(svc, baseURL, logger)
+
+	httpHandler, httpCleanup, err := app.NewHTTPHandler(ctx, cfg, facade, pool, logger)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Failed to initialize HTTP handler")
 	}
@@ -96,10 +105,31 @@ func main() {
 		logger.Fatal().Err(err).Msg("Failed to initialize HTTP server")
 	}
 
-	logger.Info().Str("server", cfg.ServerAddress).Bool("https", cfg.EnableHTTPS).Msg("Server starting")
+	grpcSrv, err := app.NewGRPCServer(cfg, facade, logger)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("Failed to initialize gRPC server")
+	}
+
+	logger.Info().Str("server", cfg.ServerAddress).Bool("https", cfg.EnableHTTPS).Msg("HTTP server starting")
+	logger.Info().Str("grpc_server", cfg.GRPCServer).Bool("https", cfg.EnableHTTPS).Msg("gRPC server starting")
 	logger.Info().Str("base_url", cfg.BaseURL).Msg("Base URL")
-	if err := app.Run(ctx, cfg, server, nil); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		logger.Fatal().Err(err).Msg("Server failed")
+
+	errCh := make(chan error, 2)
+	go func() {
+		errCh <- app.Run(ctx, cfg, server, nil)
+	}()
+	go func() {
+		errCh <- app.RunGRPC(ctx, cfg, grpcSrv, cfg.GRPCServer)
+	}()
+
+	var runErr error
+	for range 2 {
+		if err := <-errCh; err != nil && !errors.Is(err, http.ErrServerClosed) {
+			runErr = err
+		}
+	}
+	if runErr != nil {
+		logger.Fatal().Err(runErr).Msg("Server failed")
 	}
 	logger.Info().Msg("Server stopped gracefully")
 }

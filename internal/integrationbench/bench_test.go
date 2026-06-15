@@ -20,7 +20,7 @@ import (
 func BenchmarkWorkloadMixed(b *testing.B) {
 	repo := repository.NewMemoryRepository()
 	svc := service.NewService(repo)
-	h := handler.NewHandler(svc, "http://bench.example", zerolog.Nop(), nil, "")
+	h := handler.NewHandler(handler.NewShortenerFacade(svc, "http://bench.example", zerolog.Nop()), zerolog.Nop(), nil, "")
 	r := chi.NewRouter()
 	r.Use(auth.CookieMiddleware("bench-secret-key"))
 	r.Mount("/", h.Router())

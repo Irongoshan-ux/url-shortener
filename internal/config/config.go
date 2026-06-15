@@ -23,12 +23,14 @@ type Config struct {
 	AuditFile       string `json:"audit_file" env:"AUDIT_FILE"`
 	AuditURL        string `json:"audit_url" env:"AUDIT_URL"`
 	TrustedSubnet   string `json:"trusted_subnet" env:"TRUSTED_SUBNET"`
+	GRPCServer      string `json:"grpc_server" env:"GRPC_SERVER"`
 }
 
 func defaultConfig() Config {
 	return Config{
 		ServerAddress: "localhost:8080",
 		BaseURL:       "http://localhost:8080",
+		GRPCServer:    "localhost:9090",
 	}
 }
 
@@ -105,6 +107,7 @@ func load(fs *flag.FlagSet, args []string) (*Config, error) {
 	fs.StringVar(&cfg.AuditFile, "audit-file", cfg.AuditFile, "Append-only audit log file path (AUDIT_FILE)")
 	fs.StringVar(&cfg.AuditURL, "audit-url", cfg.AuditURL, "Remote audit collector POST URL (AUDIT_URL)")
 	fs.StringVar(&cfg.TrustedSubnet, "t", cfg.TrustedSubnet, "Trusted subnet CIDR for /api/internal/stats (TRUSTED_SUBNET)")
+	fs.StringVar(&cfg.GRPCServer, "g", cfg.GRPCServer, "gRPC server address (GRPC_SERVER)")
 	if err := fs.Parse(withoutConfigPathFlags(args)); err != nil {
 		return nil, err
 	}
