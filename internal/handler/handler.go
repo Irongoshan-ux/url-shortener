@@ -211,7 +211,7 @@ func (h *Handler) ShortenURLBatch(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	results, err := h.facade.service.ShortenURLBatch(r.Context(), items, userID)
+	results, err := h.facade.ShortenURLBatch(r.Context(), items, userID)
 	if err != nil {
 		h.log.Info().Err(err).Msg("shorten url batch failed")
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -315,7 +315,7 @@ func (h *Handler) DeleteUserURLs(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
-	h.facade.service.DeleteUserURLs(r.Context(), userID, shortIDs)
+	h.facade.DeleteUserURLs(r.Context(), userID, shortIDs)
 	w.WriteHeader(http.StatusAccepted)
 }
 

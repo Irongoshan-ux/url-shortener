@@ -139,3 +139,13 @@ func (f *ShortenerFacade) BuildFullURLFromBase(shortID string) string {
 func (f *ShortenerFacade) GetStats(ctx context.Context) (urls, users int, err error) {
 	return f.service.GetStats(ctx)
 }
+
+// ShortenURLBatch creates shortened URLs for a batch of items.
+func (f *ShortenerFacade) ShortenURLBatch(ctx context.Context, items []service.BatchItem, userID string) ([]service.BatchResult, error) {
+	return f.service.ShortenURLBatch(ctx, items, userID)
+}
+
+// DeleteUserURLs enqueues soft-deletes for the given short ids.
+func (f *ShortenerFacade) DeleteUserURLs(ctx context.Context, userID string, shortIDs []string) {
+	f.service.DeleteUserURLs(ctx, userID, shortIDs)
+}

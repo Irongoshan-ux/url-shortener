@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/Irongoshan-ux/url-shortener/internal/config"
-	grpcauth "github.com/Irongoshan-ux/url-shortener/internal/grpc"
+	"github.com/Irongoshan-ux/url-shortener/internal/grpcserver"
 	"github.com/Irongoshan-ux/url-shortener/internal/handler"
 	shortenerv1 "github.com/Irongoshan-ux/url-shortener/pkg/shortener/v1"
 	"github.com/rs/zerolog"
@@ -26,10 +26,10 @@ func NewGRPCServer(cfg *config.Config, facade *handler.ShortenerFacade, log zero
 		}
 		opts = append(opts, grpc.Creds(credentials.NewServerTLSFromCert(&cert)))
 	}
-	opts = append(opts, grpc.UnaryInterceptor(grpcauth.AuthUnaryInterceptor(cfg.CookieSecret)))
+	opts = append(opts, grpc.UnaryInterceptor(grpcserver.AuthUnaryInterceptor(cfg.CookieSecret)))
 
 	srv := grpc.NewServer(opts...)
-	shortenerv1.RegisterShortenerServiceServer(srv, grpcauth.NewServer(facade, log))
+	shortenerv1.RegisterShortenerServiceServer(srv, grpcserver.NewServer(facade, log))
 	return srv, nil
 }
 

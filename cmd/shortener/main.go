@@ -14,6 +14,7 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/lib/pq"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/Irongoshan-ux/url-shortener/internal/app"
 	"github.com/Irongoshan-ux/url-shortener/internal/config"
@@ -114,22 +115,16 @@ func main() {
 	logger.Info().Str("grpc_server", cfg.GRPCServer).Bool("https", cfg.EnableHTTPS).Msg("gRPC server starting")
 	logger.Info().Str("base_url", cfg.BaseURL).Msg("Base URL")
 
-	errCh := make(chan error, 2)
-	go func() {
-		errCh <- app.Run(ctx, cfg, server, nil)
-	}()
-	go func() {
-		errCh <- app.RunGRPC(ctx, cfg, grpcSrv, cfg.GRPCServer)
-	}()
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		return app.Run(gctx, cfg, server, nil)
+	})
+	g.Go(func() error {
+		return app.RunGRPC(gctx, cfg, grpcSrv, cfg.GRPCServer)
+	})
 
-	var runErr error
-	for range 2 {
-		if err := <-errCh; err != nil && !errors.Is(err, http.ErrServerClosed) {
-			runErr = err
-		}
-	}
-	if runErr != nil {
-		logger.Fatal().Err(runErr).Msg("Server failed")
+	if err := g.Wait(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		logger.Fatal().Err(err).Msg("Server failed")
 	}
 	logger.Info().Msg("Server stopped gracefully")
 }
