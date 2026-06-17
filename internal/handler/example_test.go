@@ -32,7 +32,7 @@ func newExampleServer() (baseURL string, client *http.Client, cleanup func()) {
 		return fmt.Sprintf("ex%d", seq), nil
 	}))
 	log := zerolog.Nop()
-	h := urlhandler.NewHandler(svc, "http://example.com", log, nil)
+	h := urlhandler.NewHandler(urlhandler.NewShortenerFacade(svc, "http://example.com", log), log, nil, "")
 
 	r := chi.NewRouter()
 	r.Use(auth.CookieMiddleware("example-secret"))

@@ -126,3 +126,29 @@ func (r *MemoryRepository) DeleteByShortURLs(ctx context.Context, userID string,
 	}
 	return nil
 }
+
+func (r *MemoryRepository) CountURLs(ctx context.Context) (int, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	count := 0
+	for _, u := range r.urlsByShort {
+		if !u.IsDeleted {
+			count++
+		}
+	}
+	return count, nil
+}
+
+func (r *MemoryRepository) CountUsers(ctx context.Context) (int, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	users := make(map[string]struct{})
+	for _, u := range r.urlsByShort {
+		if !u.IsDeleted && u.UserID != "" {
+			users[u.UserID] = struct{}{}
+		}
+	}
+	return len(users), nil
+}

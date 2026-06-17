@@ -33,7 +33,7 @@ func BenchmarkHandler_ShortenURLJSON(b *testing.B) {
 		Return(&model.URL{OriginalURL: "https://example.com/page", ShortURL: "shortid1", CreatedAt: time.Now()}, nil).
 		AnyTimes()
 
-	h := NewHandler(svc, "http://localhost:8080", zerolog.Nop(), nil)
+	h := NewHandler(NewShortenerFacade(svc, "http://localhost:8080", zerolog.Nop()), zerolog.Nop(), nil, "")
 	body := `{"url":"https://example.com/page"}`
 
 	b.ReportAllocs()
@@ -57,7 +57,7 @@ func BenchmarkHandler_Redirect(b *testing.B) {
 		Return(&model.URL{OriginalURL: "https://target.example/foo", ShortURL: "abc123", IsDeleted: false}, nil).
 		AnyTimes()
 
-	h := NewHandler(svc, "", zerolog.Nop(), nil)
+	h := NewHandler(NewShortenerFacade(svc, "", zerolog.Nop()), zerolog.Nop(), nil, "")
 	r := chi.NewRouter()
 	r.Get("/{id}", h.Redirect)
 
@@ -75,7 +75,7 @@ func BenchmarkHandler_Redirect(b *testing.B) {
 func BenchmarkHandler_ParseAndShorten_plain(b *testing.B) {
 	repo := repository.NewMemoryRepository()
 	svc := service.NewService(repo)
-	h := NewHandler(svc, "http://localhost:8080", zerolog.Nop(), nil)
+	h := NewHandler(NewShortenerFacade(svc, "http://localhost:8080", zerolog.Nop()), zerolog.Nop(), nil, "")
 	r := chi.NewRouter()
 	r.Use(auth.CookieMiddleware("s"))
 	r.Mount("/", h.Router())

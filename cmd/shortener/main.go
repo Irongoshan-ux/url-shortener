@@ -14,11 +14,14 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/lib/pq"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/Irongoshan-ux/url-shortener/internal/app"
 	"github.com/Irongoshan-ux/url-shortener/internal/config"
+	"github.com/Irongoshan-ux/url-shortener/internal/handler"
 	"github.com/Irongoshan-ux/url-shortener/internal/repository"
 	"github.com/Irongoshan-ux/url-shortener/internal/service"
+	"github.com/Irongoshan-ux/url-shortener/internal/validation"
 	"github.com/rs/zerolog"
 )
 
@@ -85,7 +88,14 @@ func main() {
 	}
 
 	svc := service.NewService(repo)
-	httpHandler, httpCleanup, err := app.NewHTTPHandler(ctx, cfg, svc, pool, logger)
+
+	baseURL, err := validation.NormalizeBaseURL(cfg.BaseURL)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("Failed to normalize base URL")
+	}
+	facade := handler.NewShortenerFacade(svc, baseURL, logger)
+
+	httpHandler, httpCleanup, err := app.NewHTTPHandler(ctx, cfg, facade, pool, logger)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Failed to initialize HTTP handler")
 	}
@@ -96,9 +106,24 @@ func main() {
 		logger.Fatal().Err(err).Msg("Failed to initialize HTTP server")
 	}
 
-	logger.Info().Str("server", cfg.ServerAddress).Bool("https", cfg.EnableHTTPS).Msg("Server starting")
+	grpcSrv, err := app.NewGRPCServer(cfg, facade, logger)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("Failed to initialize gRPC server")
+	}
+
+	logger.Info().Str("server", cfg.ServerAddress).Bool("https", cfg.EnableHTTPS).Msg("HTTP server starting")
+	logger.Info().Str("grpc_server", cfg.GRPCServer).Bool("https", cfg.EnableHTTPS).Msg("gRPC server starting")
 	logger.Info().Str("base_url", cfg.BaseURL).Msg("Base URL")
-	if err := app.Run(ctx, cfg, server, nil); err != nil && !errors.Is(err, http.ErrServerClosed) {
+
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		return app.Run(gctx, cfg, server, nil)
+	})
+	g.Go(func() error {
+		return app.RunGRPC(gctx, cfg, grpcSrv, cfg.GRPCServer)
+	})
+
+	if err := g.Wait(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		logger.Fatal().Err(err).Msg("Server failed")
 	}
 	logger.Info().Msg("Server stopped gracefully")

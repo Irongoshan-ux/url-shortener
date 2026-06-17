@@ -20,7 +20,7 @@ func clearConfigEnv(t *testing.T) {
 	t.Helper()
 	for _, key := range []string{
 		"CONFIG", "SERVER_ADDRESS", "BASE_URL", "FILE_STORAGE_PATH",
-		"DATABASE_DSN", "COOKIE_SECRET", "ENABLE_HTTPS", "AUDIT_FILE", "AUDIT_URL",
+		"DATABASE_DSN", "COOKIE_SECRET", "ENABLE_HTTPS", "AUDIT_FILE", "AUDIT_URL", "TRUSTED_SUBNET", "GRPC_SERVER",
 	} {
 		require.NoError(t, os.Unsetenv(key))
 	}
@@ -68,7 +68,9 @@ func TestLoadFromJSONFile(t *testing.T) {
 		"cookie_secret": "secret",
 		"enable_https": true,
 		"audit_file": "/tmp/audit.log",
-		"audit_url": "http://audit.example/hook"
+		"audit_url": "http://audit.example/hook",
+		"trusted_subnet": "192.168.1.0/24",
+		"grpc_server": "localhost:50051"
 	}`)
 
 	cfg, err := testLoad(t, []string{"-c", path})
@@ -81,6 +83,42 @@ func TestLoadFromJSONFile(t *testing.T) {
 	require.True(t, cfg.EnableHTTPS)
 	require.Equal(t, "/tmp/audit.log", cfg.AuditFile)
 	require.Equal(t, "http://audit.example/hook", cfg.AuditURL)
+	require.Equal(t, "192.168.1.0/24", cfg.TrustedSubnet)
+	require.Equal(t, "localhost:50051", cfg.GRPCServer)
+}
+
+func TestTrustedSubnetFromFlag(t *testing.T) {
+	clearConfigEnv(t)
+
+	cfg, err := testLoad(t, []string{"-t", "10.0.0.0/8"})
+	require.NoError(t, err)
+	require.Equal(t, "10.0.0.0/8", cfg.TrustedSubnet)
+}
+
+func TestTrustedSubnetEnvOverridesFlag(t *testing.T) {
+	clearConfigEnv(t)
+	t.Setenv("TRUSTED_SUBNET", "172.16.0.0/12")
+
+	cfg, err := testLoad(t, []string{"-t", "10.0.0.0/8"})
+	require.NoError(t, err)
+	require.Equal(t, "172.16.0.0/12", cfg.TrustedSubnet)
+}
+
+func TestGRPCServerFromFlag(t *testing.T) {
+	clearConfigEnv(t)
+
+	cfg, err := testLoad(t, []string{"-g", "localhost:50052"})
+	require.NoError(t, err)
+	require.Equal(t, "localhost:50052", cfg.GRPCServer)
+}
+
+func TestGRPCServerEnvOverridesFlag(t *testing.T) {
+	clearConfigEnv(t)
+	t.Setenv("GRPC_SERVER", "localhost:50053")
+
+	cfg, err := testLoad(t, []string{"-g", "localhost:50052"})
+	require.NoError(t, err)
+	require.Equal(t, "localhost:50053", cfg.GRPCServer)
 }
 
 func TestLoadPartialJSONKeepsDefaults(t *testing.T) {

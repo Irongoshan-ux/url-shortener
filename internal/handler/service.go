@@ -23,4 +23,6 @@ type URLService interface {
 	GetUserURLs(ctx context.Context, userID string) ([]*model.URL, error)
 	// DeleteUserURLs enqueues soft-deletes for the listed short ids.
 	DeleteUserURLs(ctx context.Context, userID string, shortIDs []string)
+	// GetStats returns counts of active shortened URLs and distinct users.
+	GetStats(ctx context.Context) (urls, users int, err error)
 }
